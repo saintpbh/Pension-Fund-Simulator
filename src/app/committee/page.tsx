@@ -2081,9 +2081,41 @@ export default function CommitteeDashboard() {
       <div className="dashboard-grid" style={{ display: mode === 'control' ? 'block' : (mode === 'viewer' ? 'block' : 'grid'), marginTop: '0' }}>
         {/* Bottom Left: Interactive Controls */}
         <section className="glass-panel" style={{ display: mode === 'viewer' ? 'none' : 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }}>
-          <h2 style={{ fontSize: '1.25rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
-            정책 시뮬레이션 설정
-          </h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <h2 style={{ fontSize: '1.25rem', margin: 0 }}>
+              정책 시뮬레이션 설정
+            </h2>
+            <button
+              onClick={handleOpenDualMode}
+              style={{
+                padding: '0.4rem 0.8rem',
+                fontSize: '0.8rem',
+                fontWeight: '700',
+                background: 'var(--primary-glow)',
+                border: '1px solid var(--primary)',
+                borderRadius: '6px',
+                color: 'var(--primary)',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.3rem'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--primary)';
+                e.currentTarget.style.color = '#fff';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'var(--primary-glow)';
+                e.currentTarget.style.color = 'var(--primary)';
+              }}
+            >
+              🖥️ 별도창 열기 (듀얼 모니터)
+            </button>
+          </div>
+          <div style={{ fontSize: '0.75rem', padding: '0.5rem 0.75rem', background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.15)', borderRadius: '4px', color: 'var(--danger)', marginTop: '-0.5rem' }}>
+            ※ [별도창 열기] 클릭 시 새 창이 나타나지 않으면, 브라우저 주소창 우측에서 <strong>팝업 차단을 항상 허용</strong>으로 설정해 주세요.
+          </div>
 
           {/* 1. 자원 은퇴 나이 */}
           <div className="form-group">
