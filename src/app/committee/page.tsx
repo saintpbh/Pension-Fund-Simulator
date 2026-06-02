@@ -92,8 +92,8 @@ export default function CommitteeDashboard() {
   const [simContributionRate, setSimContributionRate] = useState(9.0); // 기여율(보험료율) %
   const [simSubsidyRate, setSimSubsidyRate] = useState(0.0); // 미자립교회 재정보조율 %
 
-  // 듀얼 스크린 동기화 모드 상태 ('normal': 기본, 'control': 제어창만, 'viewer': 차트만)
-  const [mode, setMode] = useState<'normal' | 'control' | 'viewer'>('normal');
+  // 듀얼 스크린 동기화 모드 상태 ('normal': 기본, 'control': 제어창만, 'viewer': 차트 대시보드, 'chart-*': 개별 차트 단독)
+  const [mode, setMode] = useState<'normal' | 'control' | 'viewer' | 'chart-asset' | 'chart-ministers' | 'chart-population' | 'chart-shortterm'>('normal');
   const bc = useRef<BroadcastChannel | null>(null);
 
   // 차트 범례 클릭 시 하이라이트 상태 변수
@@ -171,10 +171,12 @@ export default function CommitteeDashboard() {
 
     const params = new URLSearchParams(window.location.search);
     const m = params.get('mode');
+    const chartViewerModes = ['viewer', 'chart-asset', 'chart-ministers', 'chart-population', 'chart-shortterm'];
+
     if (m === 'control') {
       setMode('control');
-    } else if (m === 'viewer') {
-      setMode('viewer');
+    } else if (m && chartViewerModes.includes(m)) {
+      setMode(m as any);
     } else {
       setMode('normal');
     }
@@ -204,7 +206,7 @@ export default function CommitteeDashboard() {
         setSimDiscountRate(payload.simDiscountRate);
         setSimContributionRate(payload.simContributionRate);
         setSimSubsidyRate(payload.simSubsidyRate);
-      } else if (type === 'request-init' && m !== 'viewer') {
+      } else if (type === 'request-init' && (!m || !chartViewerModes.includes(m))) {
         channel.postMessage({
           type: 'response-init',
           payload: {
@@ -229,7 +231,7 @@ export default function CommitteeDashboard() {
             simSubsidyRate
           }
         });
-      } else if (type === 'response-init' && m === 'viewer') {
+      } else if (type === 'response-init' && m && chartViewerModes.includes(m)) {
         setSimVoluntaryAge(payload.simVoluntaryAge);
         setSimMandatoryAge(payload.simMandatoryAge);
         setVoluntaryRatio(payload.voluntaryRatio);
@@ -249,15 +251,17 @@ export default function CommitteeDashboard() {
         setSimDiscountRate(payload.simDiscountRate);
         setSimContributionRate(payload.simContributionRate);
         setSimSubsidyRate(payload.simSubsidyRate);
-      } else if (type === 'close-control-panel' && m === 'control') {
-        window.close();
-      } else if (type === 'restore-normal' && m === 'viewer') {
+      } else if (type === 'close-control-panel' && (m === 'control' || chartViewerModes.includes(m || ''))) {
+        if (typeof window !== 'undefined' && window.opener) {
+          window.close();
+        }
+      } else if (type === 'restore-normal' && m && chartViewerModes.includes(m)) {
         setMode('normal');
         window.history.replaceState(null, '', '/committee');
       }
     };
 
-    if (m === 'viewer') {
+    if (m && chartViewerModes.includes(m)) {
       channel.postMessage({ type: 'request-init' });
     }
 
@@ -289,7 +293,7 @@ export default function CommitteeDashboard() {
 
   // 설정 제어 모드일 때 매개변수 실시간 송출
   useEffect(() => {
-    if (!bc.current || mode === 'viewer') return;
+    if (!bc.current || ['viewer', 'chart-asset', 'chart-ministers', 'chart-population', 'chart-shortterm'].includes(mode)) return;
     bc.current.postMessage({
       type: 'sync-parameters',
       payload: {
@@ -1740,8 +1744,44 @@ export default function CommitteeDashboard() {
         </header>
       )}
 
+      {/* 듀얼 스크린 차트 뷰어 전용 헤더 */}
+      {mode.startsWith('chart-') && (
+        <header className="glass-panel animate-fade-in" style={{ borderLeft: '4px solid var(--primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0', padding: '1rem 1.5rem' }}>
+          <div>
+            <h2 style={{ fontSize: '1.25rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              🖥️ 단독 차트 화면 (실시간 동기화)
+            </h2>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '0.2rem 0 0 0' }}>제어판에서 수치를 변경하면 이 차트가 실시간으로 갱신됩니다.</p>
+          </div>
+          <button 
+            onClick={() => window.close()}
+            style={{
+              padding: '0.5rem 1rem',
+              fontSize: '0.8rem',
+              fontWeight: '700',
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: '6px',
+              color: 'var(--danger)',
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--danger)';
+              e.currentTarget.style.color = '#fff';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
+              e.currentTarget.style.color = 'var(--danger)';
+            }}
+          >
+            차트 화면 닫기
+          </button>
+        </header>
+      )}
+
       {/* Top Heading Panel */}
-      {mode !== 'control' && (
+      {mode !== 'control' && !mode.startsWith('chart-') && (
         <header className="glass-panel" style={{ borderLeft: '4px solid var(--warning)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
             <h1 style={{ fontSize: '2rem', marginBottom: '0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -1842,7 +1882,7 @@ export default function CommitteeDashboard() {
       )}
 
       {/* 1. CHART AREA WIDE (TOP) */}
-      <section className="glass-panel animate-fade-in" style={{ width: '100%', minHeight: '450px', display: mode === 'control' ? 'none' : 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <section className="glass-panel animate-fade-in" style={{ width: '100%', minHeight: mode === 'chart-asset' ? '80vh' : '450px', display: (mode === 'control' || (mode.startsWith('chart-') && mode !== 'chart-asset')) ? 'none' : 'flex', flexDirection: 'column', gap: '1rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
             <h2 style={{ fontSize: '1.25rem', color: 'var(--text-primary)' }}>기금 잔액 추이 비교 프로젝션</h2>
@@ -1851,6 +1891,37 @@ export default function CommitteeDashboard() {
           
           {/* Quick Metrics & Controls */}
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            {/* Chart Split Button */}
+            {!mode.startsWith('chart-') && (
+              <button 
+                onClick={() => window.open('/committee?mode=chart-asset', 'ChartAsset', 'width=1000,height=650,scrollbars=yes,resizable=yes')}
+                style={{
+                  padding: '0.4rem 0.8rem',
+                  fontSize: '0.8rem',
+                  fontWeight: '600',
+                  background: 'var(--primary-glow)',
+                  border: '1px solid var(--primary)',
+                  borderRadius: '6px',
+                  color: 'var(--primary)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'var(--primary)';
+                  e.currentTarget.style.color = '#fff';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'var(--primary-glow)';
+                  e.currentTarget.style.color = 'var(--primary)';
+                }}
+              >
+                🖥️ 차트 창 분리
+              </button>
+            )}
+
             {/* Reset Zoom Button */}
             <button 
               onClick={handleResetAssetZoom}
@@ -1934,16 +2005,48 @@ export default function CommitteeDashboard() {
       </section>
 
       {/* 1.5 MINISTERS COUNT COMPARISON CHART (TOP-MIDDLE WIDE) */}
-      <section className="glass-panel animate-fade-in" style={{ width: '100%', minHeight: '400px', display: mode === 'control' ? 'none' : 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <section className="glass-panel animate-fade-in" style={{ width: '100%', minHeight: mode === 'chart-ministers' ? '80vh' : '400px', display: (mode === 'control' || (mode.startsWith('chart-') && mode !== 'chart-ministers')) ? 'none' : 'flex', flexDirection: 'column', gap: '1rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
             <h2 style={{ fontSize: '1.25rem', color: 'var(--text-primary)' }}>연도별 목회자(납입자/수급자) 수 추이 비교</h2>
             <p className="sub-title" style={{ fontSize: '0.85rem' }}>은퇴 연령 연장 및 가입 유입 정책에 따른 인원 수 추이 변화를 시각화합니다.</p>
           </div>
 
-          {/* Reset Zoom Button */}
-          <button 
-            onClick={handleResetMinistersZoom}
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            {/* Chart Split Button */}
+            {!mode.startsWith('chart-') && (
+              <button 
+                onClick={() => window.open('/committee?mode=chart-ministers', 'ChartMinisters', 'width=1000,height=650,scrollbars=yes,resizable=yes')}
+                style={{
+                  padding: '0.4rem 0.8rem',
+                  fontSize: '0.8rem',
+                  fontWeight: '600',
+                  background: 'var(--primary-glow)',
+                  border: '1px solid var(--primary)',
+                  borderRadius: '6px',
+                  color: 'var(--primary)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'var(--primary)';
+                  e.currentTarget.style.color = '#fff';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'var(--primary-glow)';
+                  e.currentTarget.style.color = 'var(--primary)';
+                }}
+              >
+                🖥️ 차트 창 분리
+              </button>
+            )}
+
+            {/* Reset Zoom Button */}
+            <button 
+              onClick={handleResetMinistersZoom}
             style={{
               padding: '0.4rem 0.8rem',
               fontSize: '0.8rem',
@@ -1970,6 +2073,7 @@ export default function CommitteeDashboard() {
             🔍 배율 초기화
           </button>
         </div>
+      </div>
 
         {/* Chart Canvas */}
         <div style={{ flex: 1, position: 'relative', minHeight: '300px' }}>
@@ -1982,16 +2086,48 @@ export default function CommitteeDashboard() {
       </section>
 
       {/* 1.6 TOTAL MINISTERS COUNT COMPARISON CHART (TOP-MIDDLE WIDE - UNRELATED TO PENSION) */}
-      <section className="glass-panel animate-fade-in" style={{ width: '100%', minHeight: '400px', display: mode === 'control' ? 'none' : 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <section className="glass-panel animate-fade-in" style={{ width: '100%', minHeight: mode === 'chart-population' ? '80vh' : '400px', display: (mode === 'control' || (mode.startsWith('chart-') && mode !== 'chart-population')) ? 'none' : 'flex', flexDirection: 'column', gap: '1rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
             <h2 style={{ fontSize: '1.25rem', color: 'var(--text-primary)' }}>연도별 교단 목회자 인구 구성 추이 (연금 가입 무관)</h2>
             <p className="sub-title" style={{ fontSize: '0.85rem' }}>은퇴 연령 설정에 따라 교단 내 현직 활동 목회자 및 은퇴 목회자 수(총원)의 장기 변화를 시각화합니다.</p>
           </div>
 
-          {/* Reset Zoom Button */}
-          <button 
-            onClick={handleResetTotalMinistersZoom}
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            {/* Chart Split Button */}
+            {!mode.startsWith('chart-') && (
+              <button 
+                onClick={() => window.open('/committee?mode=chart-population', 'ChartPopulation', 'width=1000,height=650,scrollbars=yes,resizable=yes')}
+                style={{
+                  padding: '0.4rem 0.8rem',
+                  fontSize: '0.8rem',
+                  fontWeight: '600',
+                  background: 'var(--primary-glow)',
+                  border: '1px solid var(--primary)',
+                  borderRadius: '6px',
+                  color: 'var(--primary)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'var(--primary)';
+                  e.currentTarget.style.color = '#fff';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'var(--primary-glow)';
+                  e.currentTarget.style.color = 'var(--primary)';
+                }}
+              >
+                🖥️ 차트 창 분리
+              </button>
+            )}
+
+            {/* Reset Zoom Button */}
+            <button 
+              onClick={handleResetTotalMinistersZoom}
             style={{
               padding: '0.4rem 0.8rem',
               fontSize: '0.8rem',
@@ -2018,6 +2154,7 @@ export default function CommitteeDashboard() {
             🔍 배율 초기화
           </button>
         </div>
+      </div>
 
         {/* Chart Canvas */}
         <div style={{ flex: 1, position: 'relative', minHeight: '300px' }}>
@@ -2030,16 +2167,48 @@ export default function CommitteeDashboard() {
       </section>
 
       {/* 1.8 SHORT TERM (10 YEARS) FINANCIAL PROJECTION CHART (MIDDLE WIDE) */}
-      <section className="glass-panel animate-fade-in" style={{ width: '100%', minHeight: '450px', display: mode === 'control' ? 'none' : 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <section className="glass-panel animate-fade-in" style={{ width: '100%', minHeight: mode === 'chart-shortterm' ? '80vh' : '450px', display: (mode === 'control' || (mode.startsWith('chart-') && mode !== 'chart-shortterm')) ? 'none' : 'flex', flexDirection: 'column', gap: '1rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
             <h2 style={{ fontSize: '1.25rem', color: 'var(--text-primary)' }}>📊 실제 DB 기반 10개년 단기 재정 전망 (제안 정책 기준)</h2>
             <p className="sub-title" style={{ fontSize: '0.85rem' }}>향후 10년(2026~2035년) 동안의 기금 잔액(선), 총 수입 및 지출(막대)과 은퇴 수급자 수(우측 Y축 선)를 시각화합니다.</p>
           </div>
 
-          {/* Reset Zoom Button */}
-          <button 
-            onClick={handleResetShortTermZoom}
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            {/* Chart Split Button */}
+            {!mode.startsWith('chart-') && (
+              <button 
+                onClick={() => window.open('/committee?mode=chart-shortterm', 'ChartShortTerm', 'width=1000,height=650,scrollbars=yes,resizable=yes')}
+                style={{
+                  padding: '0.4rem 0.8rem',
+                  fontSize: '0.8rem',
+                  fontWeight: '600',
+                  background: 'var(--primary-glow)',
+                  border: '1px solid var(--primary)',
+                  borderRadius: '6px',
+                  color: 'var(--primary)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'var(--primary)';
+                  e.currentTarget.style.color = '#fff';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'var(--primary-glow)';
+                  e.currentTarget.style.color = 'var(--primary)';
+                }}
+              >
+                🖥️ 차트 창 분리
+              </button>
+            )}
+
+            {/* Reset Zoom Button */}
+            <button 
+              onClick={handleResetShortTermZoom}
             style={{
               padding: '0.4rem 0.8rem',
               fontSize: '0.8rem',
@@ -2066,6 +2235,7 @@ export default function CommitteeDashboard() {
             🔍 배율 초기화
           </button>
         </div>
+      </div>
 
         {/* Chart Canvas */}
         <div style={{ flex: 1, position: 'relative', minHeight: '350px' }}>
@@ -2078,9 +2248,9 @@ export default function CommitteeDashboard() {
       </section>
 
       {/* 2. SPLIT LAYOUT (BOTTOM) */}
-      <div className="dashboard-grid" style={{ display: mode === 'control' ? 'block' : (mode === 'viewer' ? 'block' : 'grid'), marginTop: '0' }}>
+      <div className="dashboard-grid" style={{ display: (mode === 'control' || mode === 'viewer' || mode.startsWith('chart-')) ? 'block' : 'grid', marginTop: '0' }}>
         {/* Bottom Left: Interactive Controls */}
-        <section className="glass-panel" style={{ display: mode === 'viewer' ? 'none' : 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }}>
+        <section className="glass-panel" style={{ display: (mode === 'viewer' || mode.startsWith('chart-')) ? 'none' : 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
             <h2 style={{ fontSize: '1.25rem', margin: 0 }}>
               정책 시뮬레이션 설정
@@ -2554,7 +2724,7 @@ export default function CommitteeDashboard() {
         </section>
 
         {/* 엑셀 시뮬레이션 전제 조건 및 기초 변수표 */}
-        <section className="glass-panel" style={{ display: mode === 'viewer' ? 'none' : 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0', gridColumn: 'span 1' }}>
+        <section className="glass-panel" style={{ display: (mode === 'viewer' || mode.startsWith('chart-')) ? 'none' : 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0', gridColumn: 'span 1' }}>
           <h2 style={{ fontSize: '1.15rem', color: 'var(--text-primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
             📋 엑셀 시뮬레이션 전제 조건 및 기초 변수
           </h2>
@@ -2624,7 +2794,7 @@ export default function CommitteeDashboard() {
 
         {/* 교단 목회자 연금 가입 및 수급 자격 현황 표 */}
         {enrollmentStats && (
-          <section className="glass-panel" style={{ display: mode === 'viewer' ? 'none' : 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0', gridColumn: 'span 1' }}>
+          <section className="glass-panel" style={{ display: (mode === 'viewer' || mode.startsWith('chart-')) ? 'none' : 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0', gridColumn: 'span 1' }}>
             <h2 style={{ fontSize: '1.15rem', color: 'var(--text-primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
               🔍 교단 목회자 연금 가입 및 수급 자격 현황 (15년 납입 기준)
             </h2>
@@ -2715,7 +2885,7 @@ export default function CommitteeDashboard() {
 
         {/* 연령대별 연금 가입 및 미가입 현황 표 */}
         {enrollmentStats && (
-          <section className="glass-panel" style={{ display: mode === 'viewer' ? 'none' : 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1.5rem', gridColumn: 'span 1' }}>
+          <section className="glass-panel" style={{ display: (mode === 'viewer' || mode.startsWith('chart-')) ? 'none' : 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1.5rem', gridColumn: 'span 1' }}>
             <h2 style={{ fontSize: '1.15rem', color: 'var(--text-primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
               📊 연령대별 연금 가입 및 미가입 현황
             </h2>
@@ -2820,7 +2990,7 @@ export default function CommitteeDashboard() {
 
 
         {/* Bottom Right: Projection Comparison Table */}
-        <section className="glass-panel" style={{ display: mode === 'control' ? 'none' : 'flex', flexDirection: 'column', gap: '1rem', gridColumn: mode === 'viewer' ? 'span 2' : 'span 1' }}>
+        <section className="glass-panel" style={{ display: (mode === 'control' || mode.startsWith('chart-')) ? 'none' : 'flex', flexDirection: 'column', gap: '1rem', gridColumn: (mode === 'viewer' || mode.startsWith('chart-')) ? 'span 2' : 'span 1' }}>
           <h2 style={{ fontSize: '1.25rem' }}>연도별 재정 흐름 세부 프로젝션 (제안 정책 기준)</h2>
           <p className="sub-title" style={{ fontSize: '0.85rem' }}>완납율(83%) 및 자연감소(2%) 하의 세부 수입 구성과 지출 추이입니다.</p>
 
@@ -2875,7 +3045,7 @@ export default function CommitteeDashboard() {
         </section>
 
         {/* 은퇴 수급 가입자 실제 은퇴 나이 분포 표 */}
-        <section className="glass-panel" style={{ display: mode === 'control' ? 'none' : 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0', gridColumn: mode === 'viewer' ? 'span 2' : 'span 1' }}>
+        <section className="glass-panel" style={{ display: (mode === 'control' || mode.startsWith('chart-')) ? 'none' : 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0', gridColumn: (mode === 'viewer' || mode.startsWith('chart-')) ? 'span 2' : 'span 1' }}>
           <h2 style={{ fontSize: '1.15rem', color: 'var(--text-primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
             📊 은퇴 수급자 실제 은퇴 나이 분포 (DB 1,018명)
           </h2>
@@ -2935,7 +3105,7 @@ export default function CommitteeDashboard() {
       </div>
 
       {/* 3. WIDE LAYOUT (BOTTOM FULL) - 목회자 수 추이 비교 표 */}
-      <section className="glass-panel animate-fade-in" style={{ display: mode === 'control' ? 'none' : 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <section className="glass-panel animate-fade-in" style={{ display: (mode === 'control' || mode.startsWith('chart-')) ? 'none' : 'flex', flexDirection: 'column', gap: '1rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
             <h2 style={{ fontSize: '1.25rem', color: 'var(--text-primary)' }}>기존 안 vs 제안 안 목회자(납입자/수급자) 수 추이 비교</h2>
