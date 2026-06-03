@@ -348,8 +348,11 @@ export default function CommitteeDashboard() {
       'width=480,height=900,scrollbars=yes,resizable=yes'
     );
     if (controlWindow) {
-      setMode('viewer');
-      window.history.replaceState(null, '', '/committee?mode=viewer');
+      const chartViewerModes = ['viewer', 'chart-asset', 'chart-ministers', 'chart-population', 'chart-shortterm'];
+      if (!chartViewerModes.includes(mode)) {
+        setMode('viewer');
+        window.history.replaceState(null, '', '/committee?mode=viewer');
+      }
     } else {
       alert('설정 제어 팝업창을 띄우지 못했습니다. 팝업 차단 설정을 해제해 주세요.');
     }
@@ -1753,30 +1756,59 @@ export default function CommitteeDashboard() {
             </h2>
             <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '0.2rem 0 0 0' }}>제어판에서 수치를 변경하면 이 차트가 실시간으로 갱신됩니다.</p>
           </div>
-          <button 
-            onClick={() => window.close()}
-            style={{
-              padding: '0.5rem 1rem',
-              fontSize: '0.8rem',
-              fontWeight: '700',
-              background: 'rgba(239, 68, 68, 0.1)',
-              border: '1px solid rgba(239, 68, 68, 0.3)',
-              borderRadius: '6px',
-              color: 'var(--danger)',
-              cursor: 'pointer',
-              transition: 'all 0.2s'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'var(--danger)';
-              e.currentTarget.style.color = '#fff';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
-              e.currentTarget.style.color = 'var(--danger)';
-            }}
-          >
-            차트 화면 닫기
-          </button>
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <button 
+              onClick={handleOpenDualMode}
+              style={{
+                padding: '0.5rem 1rem',
+                fontSize: '0.8rem',
+                fontWeight: '700',
+                background: 'var(--primary-glow)',
+                border: '1px solid var(--primary)',
+                borderRadius: '6px',
+                color: 'var(--primary)',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--primary)';
+                e.currentTarget.style.color = '#fff';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'var(--primary-glow)';
+                e.currentTarget.style.color = 'var(--primary)';
+              }}
+            >
+              🎛️ 설정 제어창 열기
+            </button>
+            <button 
+              onClick={() => window.close()}
+              style={{
+                padding: '0.5rem 1rem',
+                fontSize: '0.8rem',
+                fontWeight: '700',
+                background: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                borderRadius: '6px',
+                color: 'var(--danger)',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--danger)';
+                e.currentTarget.style.color = '#fff';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
+                e.currentTarget.style.color = 'var(--danger)';
+              }}
+            >
+              차트 화면 닫기
+            </button>
+          </div>
         </header>
       )}
 
@@ -1852,30 +1884,59 @@ export default function CommitteeDashboard() {
                 🖥️ 설정창 분리 (듀얼 모니터)
               </button>
             ) : (
-              <button
-                onClick={handleRestoreNormalMode}
-                style={{
-                  padding: '0.5rem 1rem',
-                  fontSize: '0.85rem',
-                  fontWeight: '700',
-                  background: 'rgba(255, 255, 255, 0.08)',
-                  border: '1px solid rgba(255, 255, 255, 0.15)',
-                  borderRadius: '6px',
-                  color: '#cbd5e1',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)';
-                  e.currentTarget.style.color = '#fff';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-                  e.currentTarget.style.color = '#cbd5e1';
-                }}
-              >
-                🔙 통합 대시보드로 복귀
-              </button>
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <button
+                  onClick={handleOpenDualMode}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    fontSize: '0.85rem',
+                    fontWeight: '700',
+                    background: 'var(--primary-glow)',
+                    border: '1px solid var(--primary)',
+                    borderRadius: '6px',
+                    color: 'var(--primary)',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'var(--primary)';
+                    e.currentTarget.style.color = '#fff';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'var(--primary-glow)';
+                    e.currentTarget.style.color = 'var(--primary)';
+                  }}
+                >
+                  🎛️ 설정 제어창 열기
+                </button>
+                <button
+                  onClick={handleRestoreNormalMode}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    fontSize: '0.85rem',
+                    fontWeight: '700',
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    borderRadius: '6px',
+                    color: '#cbd5e1',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)';
+                    e.currentTarget.style.color = '#fff';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+                    e.currentTarget.style.color = '#cbd5e1';
+                  }}
+                >
+                  🔙 통합 대시보드로 복귀
+                </button>
+              </div>
             )}
           </div>
         </header>
