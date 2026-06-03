@@ -711,15 +711,25 @@ export default function CommitteeDashboard() {
 
         let retireAge = member.endDate && member.realRetireAge ? member.realRetireAge : 70;
         if (!(member.endDate && member.realRetireAge)) {
+          // 아직 은퇴하지 않은 가입자의 미래 은퇴 연령 결정 (사용자가 설정한 자원 은퇴자 선택 비율 반영)
           const bucket = memberIdx % 1000;
-          if (bucket < 111) {
+          const totalVolAndMan = 791;
+          const targetVoluntaryCount = Math.round(totalVolAndMan * (voluntaryRatioVal / 100));
+          const targetVolStartCount = Math.round(targetVoluntaryCount * (111 / 434));
+
+          const limit1 = targetVolStartCount;
+          const limit2 = targetVoluntaryCount;
+          const limit3 = totalVolAndMan;
+          const limit4 = totalVolAndMan + 178;
+
+          if (bucket < limit1) {
             retireAge = voluntaryAge;
-          } else if (bucket < 434) {
+          } else if (bucket < limit2) {
             const range = Math.max(1, mandatoryAge - voluntaryAge - 1);
             retireAge = voluntaryAge + 1 + (bucket % range);
-          } else if (bucket < 791) {
+          } else if (bucket < limit3) {
             retireAge = mandatoryAge + (bucket % 2);
-          } else if (bucket < 969) {
+          } else if (bucket < limit4) {
             const range = Math.max(1, voluntaryAge - 50);
             retireAge = 50 + (bucket % range);
           } else {
