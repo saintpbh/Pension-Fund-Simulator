@@ -94,6 +94,7 @@ export default function CommitteeDashboard() {
 
   // 듀얼 스크린 동기화 모드 상태 ('normal': 기본, 'control': 제어창만, 'viewer': 차트 대시보드, 'chart-*': 개별 차트 단독)
   const [mode, setMode] = useState<'normal' | 'control' | 'viewer' | 'chart-asset' | 'chart-ministers' | 'chart-population' | 'chart-shortterm'>('normal');
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const bc = useRef<BroadcastChannel | null>(null);
 
   // 차트 범례 클릭 시 하이라이트 상태 변수
@@ -1704,6 +1705,498 @@ export default function CommitteeDashboard() {
     }
   };
 
+  const renderSimulatorControls = (isDrawer = false) => {
+    return (
+      <section className={isDrawer ? "" : "glass-panel"} style={{ 
+        display: !isDrawer && (mode === 'viewer' || mode.startsWith('chart-')) ? 'none' : 'flex', 
+        flexDirection: 'column', 
+        gap: '1.5rem', 
+        width: '100%',
+        padding: isDrawer ? '1.5rem' : '2rem',
+        background: isDrawer ? 'transparent' : 'var(--bg-glass)',
+        border: isDrawer ? 'none' : '1px solid var(--border-color)',
+        borderRadius: isDrawer ? '0' : '12px',
+        overflowY: isDrawer ? 'auto' : 'visible',
+        maxHeight: isDrawer ? 'calc(100vh - 120px)' : 'none'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <h2 style={{ fontSize: '1.25rem', margin: 0 }}>
+            정책 시뮬레이션 설정
+          </h2>
+          {!isDrawer && (
+            <button
+              onClick={handleOpenDualMode}
+              style={{
+                padding: '0.4rem 0.8rem',
+                fontSize: '0.8rem',
+                fontWeight: '700',
+                background: 'var(--primary-glow)',
+                border: '1px solid var(--primary)',
+                borderRadius: '6px',
+                color: 'var(--primary)',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.3rem'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--primary)';
+                e.currentTarget.style.color = '#fff';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'var(--primary-glow)';
+                e.currentTarget.style.color = 'var(--primary)';
+              }}
+            >
+              🖥️ 별도창 열기 (듀얼 모니터)
+            </button>
+          )}
+        </div>
+        {!isDrawer && (
+          <div style={{ fontSize: '0.75rem', padding: '0.5rem 0.75rem', background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.15)', borderRadius: '4px', color: 'var(--danger)', marginTop: '-0.5rem' }}>
+            ※ [별도창 열기] 클릭 시 새 창이 나타나지 않으면, 브라우저 주소창 우측에서 <strong>팝업 차단을 항상 허용</strong>으로 설정해 주세요.
+          </div>
+        )}
+
+        {/* 1. 자원 은퇴 나이 */}
+        <div className="form-group">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span className="form-label">자원 은퇴 나이</span>
+            <span style={{ fontWeight: '700', color: 'var(--primary)' }}>{simVoluntaryAge} 세</span>
+          </div>
+          <input
+            type="range"
+            className="slider-input"
+            min={60}
+            max={70}
+            value={simVoluntaryAge}
+            onChange={(e) => {
+              const val = Number(e.target.value);
+              setSimVoluntaryAge(val);
+              if (val >= simMandatoryAge) setSimMandatoryAge(val + 3);
+            }}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
+            <span>60세</span>
+            <span>65세 (기본)</span>
+            <span>70세</span>
+          </div>
+        </div>
+
+        {/* 2. 정년 은퇴 나이 */}
+        <div className="form-group">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span className="form-label">정년 은퇴 나이</span>
+            <span style={{ fontWeight: '700', color: 'var(--primary)' }}>{simMandatoryAge} 세</span>
+          </div>
+          <input
+            type="range"
+            className="slider-input"
+            min={65}
+            max={78}
+            value={simMandatoryAge}
+            onChange={(e) => {
+              const val = Number(e.target.value);
+              setSimMandatoryAge(val);
+              if (val <= simVoluntaryAge) setSimVoluntaryAge(val - 3);
+            }}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
+            <span>65세</span>
+            <span>70세 (기본)</span>
+            <span>78세</span>
+          </div>
+        </div>
+
+        {/* 3. 자원 은퇴 비율 */}
+        <div className="form-group">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span className="form-label">자원 은퇴자 선택 비율</span>
+            <span style={{ fontWeight: '700' }}>{voluntaryRatio} %</span>
+          </div>
+          <input
+            type="range"
+            className="slider-input"
+            min={0}
+            max={100}
+            step={5}
+            value={voluntaryRatio}
+            onChange={(e) => setVoluntaryRatio(Number(e.target.value))}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
+            <span>0% (전원 정년)</span>
+            <span>20% (보통)</span>
+            <span>100% (전원 조기)</span>
+          </div>
+        </div>
+
+        {/* 3.5 신규 가입자 유치 수 */}
+        <div className="form-group">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span className="form-label">매년 신규 목회자 가입 유치 수</span>
+            <span style={{ fontWeight: '700', color: 'var(--primary)' }}>{simNewSubscribers} 명</span>
+          </div>
+          <input
+            type="range"
+            className="slider-input"
+            min={0}
+            max={100}
+            step={1}
+            value={simNewSubscribers}
+            onChange={(e) => setSimNewSubscribers(Number(e.target.value))}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
+            <span>0명</span>
+            <span>40명 (기본)</span>
+            <span>100명</span>
+          </div>
+        </div>
+
+        {/* 4. 기금수익률 */}
+        <div className="form-group">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span className="form-label">재단 기금 연 운용수익률</span>
+            <span style={{ fontWeight: '700', color: 'var(--success)' }}>{interestRate.toFixed(1)} %</span>
+          </div>
+          <input
+            type="range"
+            className="slider-input"
+            min={0}
+            max={8}
+            step={0.1}
+            value={interestRate}
+            onChange={(e) => setInterestRate(Number(e.target.value))}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
+            <span>0% (수익 없음)</span>
+            <span>3.7% (기본)</span>
+            <span>8.0% (고수익)</span>
+          </div>
+        </div>
+
+        {/* 5. 임금 상승률 */}
+        <div className="form-group">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span className="form-label">연 기본급 인상률 (임금상승률)</span>
+            <span style={{ fontWeight: '700' }}>{wageGrowth.toFixed(1)} %</span>
+          </div>
+          <input
+            type="range"
+            className="slider-input"
+            min={0}
+            max={5}
+            step={0.1}
+            value={wageGrowth}
+            onChange={(e) => setWageGrowth(Number(e.target.value))}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
+            <span>0% (기본급 동결)</span>
+            <span>1.5% (기본)</span>
+            <span>5.0%</span>
+          </div>
+        </div>
+
+        {/* 6. 남성 평균 수명 */}
+        <div className="form-group">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span className="form-label">목회자 (남성) 평균 수명</span>
+            <span style={{ fontWeight: '700' }}>{maleLife} 세</span>
+          </div>
+          <input
+            type="range"
+            className="slider-input"
+            min={75}
+            max={95}
+            value={maleLife}
+            onChange={(e) => setMaleLife(Number(e.target.value))}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
+            <span>75세</span>
+            <span>81세 (기본)</span>
+            <span>95세</span>
+          </div>
+        </div>
+
+        {/* 7. 여성 평균 수명 */}
+        <div className="form-group">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span className="form-label">배우자 (여성) 평균 수명</span>
+            <span style={{ fontWeight: '700' }}>{femaleLife} 세</span>
+          </div>
+          <input
+            type="range"
+            className="slider-input"
+            min={75}
+            max={100}
+            value={femaleLife}
+            onChange={(e) => setFemaleLife(Number(e.target.value))}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
+            <span>75세</span>
+            <span>87세 (기본)</span>
+            <span>100세</span>
+          </div>
+        </div>
+
+        {/* 8. 초기 재단 자산 */}
+        <div className="form-group">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span className="form-label">초기 재단 보유 자산</span>
+            <span style={{ fontWeight: '700' }}>{(initialAsset / 100000000).toLocaleString()} 억 원</span>
+          </div>
+          <input
+            type="range"
+            className="slider-input"
+            min={10000000000}
+            max={150000000000}
+            step={5000000000}
+            value={initialAsset}
+            onChange={(e) => setInitialAsset(Number(e.target.value))}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
+            <span>100억 원</span>
+            <span>494억 원 (기본)</span>
+            <span>1500억 원</span>
+          </div>
+        </div>
+
+        {/* 8.5 보험료율(기여율) */}
+        <div className="form-group">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span className="form-label">기여율 (보험료율)</span>
+            <span style={{ fontWeight: '700', color: 'var(--primary)' }}>{simContributionRate.toFixed(1)} %</span>
+          </div>
+          <input
+            type="range"
+            className="slider-input"
+            min={6.0}
+            max={15.0}
+            step={0.5}
+            value={simContributionRate}
+            onChange={(e) => setSimContributionRate(Number(e.target.value))}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
+            <span>6.0%</span>
+            <span>9.0% (기본)</span>
+            <span>15.0%</span>
+          </div>
+        </div>
+
+        {/* 8.6 미자립교회 재정보조율 */}
+        <div className="form-group">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span className="form-label">미자립 교회 재정보조율</span>
+            <span style={{ fontWeight: '700', color: 'var(--primary)' }}>{simSubsidyRate.toFixed(0)} %</span>
+          </div>
+          <input
+            type="range"
+            className="slider-input"
+            min={0}
+            max={100}
+            step={5}
+            value={simSubsidyRate}
+            onChange={(e) => setSimSubsidyRate(Number(e.target.value))}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
+            <span>0% (보조 없음)</span>
+            <span>50%</span>
+            <span>100% (완전 보조)</span>
+          </div>
+        </div>
+
+        {/* 구분선 */}
+        <hr style={{ border: '0', borderTop: '1px solid var(--border-color)', margin: '1.5rem 0' }} />
+
+        <h3 style={{ fontSize: '1.1rem', color: 'var(--warning)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          ⚙️ 6대 고급 리스크 시나리오 설정
+        </h3>
+
+        {/* 1. 신규 가입자 감소율 */}
+        <div className="form-group">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              📉 신규 가입자 감소율 (저출생)
+            </span>
+            <span style={{ fontWeight: '700', color: 'var(--danger)' }}>{simNewSubDeclineRate.toFixed(1)} %</span>
+          </div>
+          <input
+            type="range"
+            className="slider-input"
+            min={0}
+            max={5}
+            step={0.1}
+            value={simNewSubDeclineRate}
+            onChange={(e) => setSimNewSubDeclineRate(Number(e.target.value))}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
+            <span>0% (감소 없음)</span>
+            <span>1.5% (기본)</span>
+            <span>5.0%</span>
+          </div>
+        </div>
+
+        {/* 2. 투자 수익률 변동성 */}
+        <div className="form-group">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              📊 투자 수익률 변동성 (신뢰대역)
+            </span>
+            <span style={{ fontWeight: '700', color: 'var(--primary)' }}>± {interestVolatility.toFixed(1)} %</span>
+          </div>
+          <input
+            type="range"
+            className="slider-input"
+            min={0}
+            max={5}
+            step={0.1}
+            value={interestVolatility}
+            onChange={(e) => setInterestVolatility(Number(e.target.value))}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
+            <span>0% (고정)</span>
+            <span>1.0% (기본)</span>
+            <span>5.0%</span>
+          </div>
+        </div>
+
+        {/* 3. 고령화 기대수명 상승률 */}
+        <div className="form-group">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              📈 고령화 수명 연장 속도
+            </span>
+            <span style={{ fontWeight: '700' }}>+{lifeExpectancyTrend.toFixed(2)} 세/10년</span>
+          </div>
+          <input
+            type="range"
+            className="slider-input"
+            min={0}
+            max={1}
+            step={0.05}
+            value={lifeExpectancyTrend}
+            onChange={(e) => setLifeExpectancyTrend(Number(e.target.value))}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
+            <span>0세 (정체)</span>
+            <span>0.15세 (기본)</span>
+            <span>1.0세</span>
+          </div>
+        </div>
+
+        {/* 4. 미자립 교회 비율 */}
+        <div className="form-group">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              ⛪ 미자립 교회 비율 (완납율 연동)
+            </span>
+            <span style={{ fontWeight: '700' }}>{nonSelfSufficientRatio} %</span>
+          </div>
+          <input
+            type="range"
+            className="slider-input"
+            min={0}
+            max={50}
+            step={5}
+            value={nonSelfSufficientRatio}
+            onChange={(e) => setNonSelfSufficientRatio(Number(e.target.value))}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
+            <span>0% (완납 90.0%)</span>
+            <span>30% (완납 83.1%)</span>
+            <span>50% (완납 78.5%)</span>
+          </div>
+        </div>
+
+        {/* 5. 물가 연동 지급액 인상 */}
+        <div className="form-group" style={{ padding: '0.75rem', background: 'rgba(255, 255, 255, 0.02)', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginBottom: '0.5rem' }}>
+            <input
+              type="checkbox"
+              checked={simCpiIndexing}
+              onChange={(e) => setSimCpiIndexing(e.target.checked)}
+              style={{ width: '1.1rem', height: '1.1rem', cursor: 'pointer', accentColor: 'var(--warning)' }}
+            />
+            <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-primary)' }}>
+              물가 연동 지급액 인상 (CPI Indexing)
+            </span>
+          </label>
+          {simCpiIndexing && (
+            <div style={{ marginTop: '0.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>연평균 물가상승률(CPI)</span>
+                <span style={{ fontWeight: '700', color: 'var(--warning)' }}>{simCpiRate.toFixed(1)} %</span>
+              </div>
+              <input
+                type="range"
+                className="slider-input"
+                min={0.5}
+                max={5}
+                step={0.1}
+                value={simCpiRate}
+                onChange={(e) => setSimCpiRate(Number(e.target.value))}
+                style={{ marginTop: '0.25rem' }}
+              />
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.675rem', color: 'var(--text-tertiary)' }}>
+                <span>0.5%</span>
+                <span>1.5% (기본)</span>
+                <span>5.0%</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 6. 일시금 수령 퇴출 비율 */}
+        <div className="form-group">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              💰 은퇴 시 일시금 수령 비율
+            </span>
+            <span style={{ fontWeight: '700', color: 'var(--danger)' }}>{simLumpSumRatio} %</span>
+          </div>
+          <input
+            type="range"
+            className="slider-input"
+            min={0}
+            max={20}
+            step={1}
+            value={simLumpSumRatio}
+            onChange={(e) => setSimLumpSumRatio(Number(e.target.value))}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
+            <span>0% (전원 연금)</span>
+            <span>5% (기본)</span>
+            <span>20% (높음)</span>
+          </div>
+        </div>
+
+        {/* 7. 수리적 계리 할인율 가정 */}
+        <div className="form-group">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              📉 수리적 할인율 가정 (Discount Rate)
+            </span>
+            <span style={{ fontWeight: '700', color: 'var(--warning)' }}>{simDiscountRate.toFixed(1)} %</span>
+          </div>
+          <input
+            type="range"
+            className="slider-input"
+            min={2.0}
+            max={6.0}
+            step={0.1}
+            value={simDiscountRate}
+            onChange={(e) => setSimDiscountRate(Number(e.target.value))}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
+            <span>2.0% (비관/저금리)</span>
+            <span>3.5% (기본)</span>
+            <span>6.0% (낙관/고금리)</span>
+          </div>
+        </div>
+      </section>
+    );
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', padding: mode === 'control' ? '1rem' : '2rem' }}>
       {/* 듀얼 스크린 제어판 전용 헤더 */}
@@ -1758,7 +2251,7 @@ export default function CommitteeDashboard() {
           </div>
           <div style={{ display: 'flex', gap: '0.75rem' }}>
             <button 
-              onClick={handleOpenDualMode}
+              onClick={() => setIsDrawerOpen(true)}
               style={{
                 padding: '0.5rem 1rem',
                 fontSize: '0.8rem',
@@ -1782,7 +2275,34 @@ export default function CommitteeDashboard() {
                 e.currentTarget.style.color = 'var(--primary)';
               }}
             >
-              🎛️ 설정 제어창 열기
+              📱 화면 내 시뮬레이터 열기
+            </button>
+            <button 
+              onClick={handleOpenDualMode}
+              style={{
+                padding: '0.5rem 1rem',
+                fontSize: '0.8rem',
+                fontWeight: '700',
+                background: 'rgba(255, 255, 255, 0.08)',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                borderRadius: '6px',
+                color: '#cbd5e1',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)';
+                e.currentTarget.style.color = '#fff';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+                e.currentTarget.style.color = '#cbd5e1';
+              }}
+            >
+              🖥️ 설정 제어 팝업창 열기
             </button>
             <button 
               onClick={() => window.close()}
@@ -1856,37 +2376,9 @@ export default function CommitteeDashboard() {
             </button>
 
             {mode === 'normal' ? (
-              <button
-                onClick={handleOpenDualMode}
-                style={{
-                  padding: '0.5rem 1rem',
-                  fontSize: '0.85rem',
-                  fontWeight: '700',
-                  background: 'var(--primary-glow)',
-                  border: '1px solid var(--primary)',
-                  borderRadius: '6px',
-                  color: 'var(--primary)',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.4rem'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'var(--primary)';
-                  e.currentTarget.style.color = '#fff';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'var(--primary-glow)';
-                  e.currentTarget.style.color = 'var(--primary)';
-                }}
-              >
-                🖥️ 설정창 분리 (듀얼 모니터)
-              </button>
-            ) : (
               <div style={{ display: 'flex', gap: '0.75rem' }}>
                 <button
-                  onClick={handleOpenDualMode}
+                  onClick={() => setIsDrawerOpen(true)}
                   style={{
                     padding: '0.5rem 1rem',
                     fontSize: '0.85rem',
@@ -1910,7 +2402,91 @@ export default function CommitteeDashboard() {
                     e.currentTarget.style.color = 'var(--primary)';
                   }}
                 >
-                  🎛️ 설정 제어창 열기
+                  📱 화면 내 시뮬레이터 열기
+                </button>
+                <button
+                  onClick={handleOpenDualMode}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    fontSize: '0.85rem',
+                    fontWeight: '700',
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    borderRadius: '6px',
+                    color: '#cbd5e1',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)';
+                    e.currentTarget.style.color = '#fff';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+                    e.currentTarget.style.color = '#cbd5e1';
+                  }}
+                >
+                  🖥️ 설정창 분리 (듀얼 모니터)
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <button
+                  onClick={() => setIsDrawerOpen(true)}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    fontSize: '0.85rem',
+                    fontWeight: '700',
+                    background: 'var(--primary-glow)',
+                    border: '1px solid var(--primary)',
+                    borderRadius: '6px',
+                    color: 'var(--primary)',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'var(--primary)';
+                    e.currentTarget.style.color = '#fff';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'var(--primary-glow)';
+                    e.currentTarget.style.color = 'var(--primary)';
+                  }}
+                >
+                  📱 화면 내 시뮬레이터 열기
+                </button>
+                <button
+                  onClick={handleOpenDualMode}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    fontSize: '0.85rem',
+                    fontWeight: '700',
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    borderRadius: '6px',
+                    color: '#cbd5e1',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)';
+                    e.currentTarget.style.color = '#fff';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+                    e.currentTarget.style.color = '#cbd5e1';
+                  }}
+                >
+                  🖥️ 설정 제어 팝업창 열기
                 </button>
                 <button
                   onClick={handleRestoreNormalMode}
@@ -2311,478 +2887,7 @@ export default function CommitteeDashboard() {
       {/* 2. SPLIT LAYOUT (BOTTOM) */}
       <div className="dashboard-grid" style={{ display: (mode === 'control' || mode === 'viewer' || mode.startsWith('chart-')) ? 'block' : 'grid', marginTop: '0' }}>
         {/* Bottom Left: Interactive Controls */}
-        <section className="glass-panel" style={{ display: (mode === 'viewer' || mode.startsWith('chart-')) ? 'none' : 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-            <h2 style={{ fontSize: '1.25rem', margin: 0 }}>
-              정책 시뮬레이션 설정
-            </h2>
-            <button
-              onClick={handleOpenDualMode}
-              style={{
-                padding: '0.4rem 0.8rem',
-                fontSize: '0.8rem',
-                fontWeight: '700',
-                background: 'var(--primary-glow)',
-                border: '1px solid var(--primary)',
-                borderRadius: '6px',
-                color: 'var(--primary)',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.3rem'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'var(--primary)';
-                e.currentTarget.style.color = '#fff';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'var(--primary-glow)';
-                e.currentTarget.style.color = 'var(--primary)';
-              }}
-            >
-              🖥️ 별도창 열기 (듀얼 모니터)
-            </button>
-          </div>
-          <div style={{ fontSize: '0.75rem', padding: '0.5rem 0.75rem', background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.15)', borderRadius: '4px', color: 'var(--danger)', marginTop: '-0.5rem' }}>
-            ※ [별도창 열기] 클릭 시 새 창이 나타나지 않으면, 브라우저 주소창 우측에서 <strong>팝업 차단을 항상 허용</strong>으로 설정해 주세요.
-          </div>
-
-          {/* 1. 자원 은퇴 나이 */}
-          <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="form-label">자원 은퇴 나이</span>
-              <span style={{ fontWeight: '700', color: 'var(--primary)' }}>{simVoluntaryAge} 세</span>
-            </div>
-            <input
-              type="range"
-              className="slider-input"
-              min={60}
-              max={70}
-              value={simVoluntaryAge}
-              onChange={(e) => {
-                const val = Number(e.target.value);
-                setSimVoluntaryAge(val);
-                if (val >= simMandatoryAge) setSimMandatoryAge(val + 3);
-              }}
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
-              <span>60세</span>
-              <span>65세 (기본)</span>
-              <span>70세</span>
-            </div>
-          </div>
-
-          {/* 2. 정년 은퇴 나이 */}
-          <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="form-label">정년 은퇴 나이</span>
-              <span style={{ fontWeight: '700', color: 'var(--primary)' }}>{simMandatoryAge} 세</span>
-            </div>
-            <input
-              type="range"
-              className="slider-input"
-              min={65}
-              max={78}
-              value={simMandatoryAge}
-              onChange={(e) => {
-                const val = Number(e.target.value);
-                setSimMandatoryAge(val);
-                if (val <= simVoluntaryAge) setSimVoluntaryAge(val - 3);
-              }}
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
-              <span>65세</span>
-              <span>70세 (기본)</span>
-              <span>78세</span>
-            </div>
-          </div>
-
-          {/* 3. 자원 은퇴 비율 */}
-          <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="form-label">자원 은퇴자 선택 비율</span>
-              <span style={{ fontWeight: '700' }}>{voluntaryRatio} %</span>
-            </div>
-            <input
-              type="range"
-              className="slider-input"
-              min={0}
-              max={100}
-              step={5}
-              value={voluntaryRatio}
-              onChange={(e) => setVoluntaryRatio(Number(e.target.value))}
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
-              <span>0% (전원 정년)</span>
-              <span>20% (보통)</span>
-              <span>100% (전원 조기)</span>
-            </div>
-          </div>
-
-          {/* 3.5 신규 가입자 유치 수 */}
-          <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="form-label">매년 신규 목회자 가입 유치 수</span>
-              <span style={{ fontWeight: '700', color: 'var(--primary)' }}>{simNewSubscribers} 명</span>
-            </div>
-            <input
-              type="range"
-              className="slider-input"
-              min={0}
-              max={100}
-              step={1}
-              value={simNewSubscribers}
-              onChange={(e) => setSimNewSubscribers(Number(e.target.value))}
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
-              <span>0명</span>
-              <span>40명 (기본)</span>
-              <span>100명</span>
-            </div>
-          </div>
-
-          {/* 4. 기금수익률 */}
-          <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="form-label">재단 기금 연 운용수익률</span>
-              <span style={{ fontWeight: '700', color: 'var(--success)' }}>{interestRate.toFixed(1)} %</span>
-            </div>
-            <input
-              type="range"
-              className="slider-input"
-              min={0}
-              max={8}
-              step={0.1}
-              value={interestRate}
-              onChange={(e) => setInterestRate(Number(e.target.value))}
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
-              <span>0% (수익 없음)</span>
-              <span>3.7% (기본)</span>
-              <span>8.0% (고수익)</span>
-            </div>
-          </div>
-
-          {/* 5. 임금 상승률 */}
-          <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="form-label">연 기본급 인상률 (임금상승률)</span>
-              <span style={{ fontWeight: '700' }}>{wageGrowth.toFixed(1)} %</span>
-            </div>
-            <input
-              type="range"
-              className="slider-input"
-              min={0}
-              max={5}
-              step={0.1}
-              value={wageGrowth}
-              onChange={(e) => setWageGrowth(Number(e.target.value))}
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
-              <span>0% (기본급 동결)</span>
-              <span>1.5% (기본)</span>
-              <span>5.0%</span>
-            </div>
-          </div>
-
-          {/* 6. 남성 평균 수명 */}
-          <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="form-label">목회자 (남성) 평균 수명</span>
-              <span style={{ fontWeight: '700' }}>{maleLife} 세</span>
-            </div>
-            <input
-              type="range"
-              className="slider-input"
-              min={75}
-              max={95}
-              value={maleLife}
-              onChange={(e) => setMaleLife(Number(e.target.value))}
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
-              <span>75세</span>
-              <span>81세 (기본)</span>
-              <span>95세</span>
-            </div>
-          </div>
-
-          {/* 7. 여성 평균 수명 */}
-          <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="form-label">배우자 (여성) 평균 수명</span>
-              <span style={{ fontWeight: '700' }}>{femaleLife} 세</span>
-            </div>
-            <input
-              type="range"
-              className="slider-input"
-              min={75}
-              max={100}
-              value={femaleLife}
-              onChange={(e) => setFemaleLife(Number(e.target.value))}
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
-              <span>75세</span>
-              <span>87세 (기본)</span>
-              <span>100세</span>
-            </div>
-          </div>
-
-          {/* 8. 초기 재단 자산 */}
-          <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="form-label">초기 재단 보유 자산</span>
-              <span style={{ fontWeight: '700' }}>{(initialAsset / 100000000).toLocaleString()} 억 원</span>
-            </div>
-            <input
-              type="range"
-              className="slider-input"
-              min={10000000000}
-              max={150000000000}
-              step={5000000000}
-              value={initialAsset}
-              onChange={(e) => setInitialAsset(Number(e.target.value))}
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
-              <span>100억 원</span>
-              <span>494억 원 (기본)</span>
-              <span>1500억 원</span>
-            </div>
-          </div>
-
-          {/* 8.5 보험료율(기여율) */}
-          <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="form-label">기여율 (보험료율)</span>
-              <span style={{ fontWeight: '700', color: 'var(--primary)' }}>{simContributionRate.toFixed(1)} %</span>
-            </div>
-            <input
-              type="range"
-              className="slider-input"
-              min={6.0}
-              max={15.0}
-              step={0.5}
-              value={simContributionRate}
-              onChange={(e) => setSimContributionRate(Number(e.target.value))}
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
-              <span>6.0%</span>
-              <span>9.0% (기본)</span>
-              <span>15.0%</span>
-            </div>
-          </div>
-
-          {/* 8.6 미자립교회 재정보조율 */}
-          <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="form-label">미자립 교회 재정보조율</span>
-              <span style={{ fontWeight: '700', color: 'var(--primary)' }}>{simSubsidyRate.toFixed(0)} %</span>
-            </div>
-            <input
-              type="range"
-              className="slider-input"
-              min={0}
-              max={100}
-              step={5}
-              value={simSubsidyRate}
-              onChange={(e) => setSimSubsidyRate(Number(e.target.value))}
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
-              <span>0% (보조 없음)</span>
-              <span>50%</span>
-              <span>100% (완전 보조)</span>
-            </div>
-          </div>
-
-          {/* 구분선 */}
-          <hr style={{ border: '0', borderTop: '1px solid var(--border-color)', margin: '1.5rem 0' }} />
-
-          <h3 style={{ fontSize: '1.1rem', color: 'var(--warning)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            ⚙️ 6대 고급 리스크 시나리오 설정
-          </h3>
-
-          {/* 1. 신규 가입자 감소율 */}
-          <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                📉 신규 가입자 감소율 (저출생)
-              </span>
-              <span style={{ fontWeight: '700', color: 'var(--danger)' }}>{simNewSubDeclineRate.toFixed(1)} %</span>
-            </div>
-            <input
-              type="range"
-              className="slider-input"
-              min={0}
-              max={5}
-              step={0.1}
-              value={simNewSubDeclineRate}
-              onChange={(e) => setSimNewSubDeclineRate(Number(e.target.value))}
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
-              <span>0% (감소 없음)</span>
-              <span>1.5% (기본)</span>
-              <span>5.0%</span>
-            </div>
-          </div>
-
-          {/* 2. 투자 수익률 변동성 */}
-          <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                📊 투자 수익률 변동성 (신뢰대역)
-              </span>
-              <span style={{ fontWeight: '700', color: 'var(--primary)' }}>± {interestVolatility.toFixed(1)} %</span>
-            </div>
-            <input
-              type="range"
-              className="slider-input"
-              min={0}
-              max={5}
-              step={0.1}
-              value={interestVolatility}
-              onChange={(e) => setInterestVolatility(Number(e.target.value))}
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
-              <span>0% (고정)</span>
-              <span>1.0% (기본)</span>
-              <span>5.0%</span>
-            </div>
-          </div>
-
-          {/* 3. 고령화 기대수명 상승률 */}
-          <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                📈 고령화 수명 연장 속도
-              </span>
-              <span style={{ fontWeight: '700' }}>+{lifeExpectancyTrend.toFixed(2)} 세/10년</span>
-            </div>
-            <input
-              type="range"
-              className="slider-input"
-              min={0}
-              max={1}
-              step={0.05}
-              value={lifeExpectancyTrend}
-              onChange={(e) => setLifeExpectancyTrend(Number(e.target.value))}
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
-              <span>0세 (정체)</span>
-              <span>0.15세 (기본)</span>
-              <span>1.0세</span>
-            </div>
-          </div>
-
-          {/* 4. 미자립 교회 비율 */}
-          <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                ⛪ 미자립 교회 비율 (완납율 연동)
-              </span>
-              <span style={{ fontWeight: '700' }}>{nonSelfSufficientRatio} %</span>
-            </div>
-            <input
-              type="range"
-              className="slider-input"
-              min={0}
-              max={50}
-              step={5}
-              value={nonSelfSufficientRatio}
-              onChange={(e) => setNonSelfSufficientRatio(Number(e.target.value))}
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
-              <span>0% (완납 90.0%)</span>
-              <span>30% (완납 83.1%)</span>
-              <span>50% (완납 78.5%)</span>
-            </div>
-          </div>
-
-          {/* 5. 물가 연동 지급액 인상 */}
-          <div className="form-group" style={{ padding: '0.75rem', background: 'rgba(255, 255, 255, 0.02)', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginBottom: '0.5rem' }}>
-              <input
-                type="checkbox"
-                checked={simCpiIndexing}
-                onChange={(e) => setSimCpiIndexing(e.target.checked)}
-                style={{ width: '1.1rem', height: '1.1rem', cursor: 'pointer', accentColor: 'var(--warning)' }}
-              />
-              <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-primary)' }}>
-                물가 연동 지급액 인상 (CPI Indexing)
-              </span>
-            </label>
-            {simCpiIndexing && (
-              <div style={{ marginTop: '0.5rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem' }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>연평균 물가상승률(CPI)</span>
-                  <span style={{ fontWeight: '700', color: 'var(--warning)' }}>{simCpiRate.toFixed(1)} %</span>
-                </div>
-                <input
-                  type="range"
-                  className="slider-input"
-                  min={0.5}
-                  max={5}
-                  step={0.1}
-                  value={simCpiRate}
-                  onChange={(e) => setSimCpiRate(Number(e.target.value))}
-                  style={{ marginTop: '0.25rem' }}
-                />
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.675rem', color: 'var(--text-tertiary)' }}>
-                  <span>0.5%</span>
-                  <span>1.5% (기본)</span>
-                  <span>5.0%</span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* 6. 일시금 수령 퇴출 비율 */}
-          <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                💰 은퇴 시 일시금 수령 비율
-              </span>
-              <span style={{ fontWeight: '700', color: 'var(--danger)' }}>{simLumpSumRatio} %</span>
-            </div>
-            <input
-              type="range"
-              className="slider-input"
-              min={0}
-              max={20}
-              step={1}
-              value={simLumpSumRatio}
-              onChange={(e) => setSimLumpSumRatio(Number(e.target.value))}
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
-              <span>0% (전원 연금)</span>
-              <span>5% (기본)</span>
-              <span>20% (높음)</span>
-            </div>
-          </div>
-
-          {/* 7. 수리적 계리 할인율 가정 */}
-          <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                📉 수리적 할인율 가정 (Discount Rate)
-              </span>
-              <span style={{ fontWeight: '700', color: 'var(--warning)' }}>{simDiscountRate.toFixed(1)} %</span>
-            </div>
-            <input
-              type="range"
-              className="slider-input"
-              min={2.0}
-              max={6.0}
-              step={0.1}
-              value={simDiscountRate}
-              onChange={(e) => setSimDiscountRate(Number(e.target.value))}
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.725rem', color: 'var(--text-tertiary)' }}>
-              <span>2.0% (비관/저금리)</span>
-              <span>3.5% (기본)</span>
-              <span>6.0% (낙관/고금리)</span>
-            </div>
-          </div>
-        </section>
+        {renderSimulatorControls(false)}
 
         {/* 엑셀 시뮬레이션 전제 조건 및 기초 변수표 */}
         <section className="glass-panel" style={{ display: (mode === 'viewer' || mode.startsWith('chart-')) ? 'none' : 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0', gridColumn: 'span 1' }}>
@@ -3228,6 +3333,89 @@ export default function CommitteeDashboard() {
           </table>
         </div>
       </section>
+
+      {/* 🖥️ 사이드 드로워 시뮬레이터 조절 패널 */}
+      {isDrawerOpen && (
+        <>
+          {/* Backdrop 오버레이 */}
+          <div 
+            onClick={() => setIsDrawerOpen(false)}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              width: '100vw',
+              height: '100vh',
+              backgroundColor: 'rgba(0, 0, 0, 0.4)',
+              backdropFilter: 'blur(4px)',
+              zIndex: 9999,
+              transition: 'opacity 0.3s ease'
+            }}
+          />
+          {/* 드로워 패널 */}
+          <div 
+            style={{
+              position: 'fixed',
+              top: 0,
+              right: 0,
+              width: '460px',
+              maxWidth: '90%',
+              height: '100vh',
+              backgroundColor: 'var(--bg-primary, #0f172a)',
+              backgroundImage: 'linear-gradient(to bottom, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.95))',
+              boxShadow: '-4px 0 25px rgba(0, 0, 0, 0.5)',
+              borderLeft: '1px solid var(--border-color)',
+              zIndex: 10000,
+              display: 'flex',
+              flexDirection: 'column',
+              animation: 'slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
+            }}
+          >
+            {/* 드로워 헤더 */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '1.25rem 1.5rem',
+              borderBottom: '1px solid var(--border-color)',
+              background: 'rgba(255, 255, 255, 0.03)'
+            }}>
+              <h2 style={{ fontSize: '1.25rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                🎛️ 시뮬레이터 설정 바
+              </h2>
+              <button 
+                onClick={() => setIsDrawerOpen(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-secondary)',
+                  fontSize: '1.5rem',
+                  cursor: 'pointer',
+                  padding: '0.2rem 0.5rem',
+                  lineHeight: '1',
+                  transition: 'color 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.color = '#fff'}
+                onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
+              >
+                &times;
+              </button>
+            </div>
+            {/* 드로워 본문 (설정 슬라이더들) */}
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              {renderSimulatorControls(true)}
+            </div>
+          </div>
+
+          {/* slideIn Keyframe 스타일 주입 */}
+          <style jsx global>{`
+            @keyframes slideIn {
+              from { transform: translateX(100%); }
+              to { transform: translateX(0); }
+            }
+          `}</style>
+        </>
+      )}
     </div>
   );
 }
