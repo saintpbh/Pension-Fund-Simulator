@@ -396,6 +396,7 @@ export default function CommitteeDashboard() {
     contributionRate: number,
     discountRate: number,
     subsidyRate: number,
+    voluntaryRatioVal: number,
     isProposed?: boolean
   ) => {
     const projectionYears = 40; // 40년 예측 (2026 ~ 2065)
@@ -525,19 +526,28 @@ export default function CommitteeDashboard() {
         let retireAge = member.endDate && member.realRetireAge ? member.realRetireAge : 70;
 
         if (!(member.endDate && member.realRetireAge)) {
-          // 아직 은퇴하지 않은 가입자의 미래 은퇴 연령 결정 (실제 DB 1,018명 분포 비율 기반 동적 할당)
+          // 아직 은퇴하지 않은 가입자의 미래 은퇴 연령 결정 (사용자가 설정한 자원 은퇴자 선택 비율 반영)
           const bucket = idx % 1000;
-          if (bucket < 111) {
+          const totalVolAndMan = 791;
+          const targetVoluntaryCount = Math.round(totalVolAndMan * (voluntaryRatioVal / 100));
+          const targetVolStartCount = Math.round(targetVoluntaryCount * (111 / 434));
+
+          const limit1 = targetVolStartCount;
+          const limit2 = targetVoluntaryCount;
+          const limit3 = totalVolAndMan;
+          const limit4 = totalVolAndMan + 178;
+
+          if (bucket < limit1) {
             // 1. 만 65세 은퇴 (자원은퇴 초입) -> 제안안 비율에 맞춰 voluntaryAge 적용
             retireAge = voluntaryAge;
-          } else if (bucket < 434) {
+          } else if (bucket < limit2) {
             // 2. 만 66세 ~ 69세 은퇴 (자원은퇴) -> voluntaryAge + 1 ~ mandatoryAge - 1 사이 균등 배분
             const range = Math.max(1, mandatoryAge - voluntaryAge - 1);
             retireAge = voluntaryAge + 1 + (bucket % range);
-          } else if (bucket < 791) {
+          } else if (bucket < limit3) {
             // 3. 만 70세 ~ 71세 은퇴 (정년은퇴 및 유예) -> mandatoryAge ~ mandatoryAge + 1 균등 배분
             retireAge = mandatoryAge + (bucket % 2);
-          } else if (bucket < 969) {
+          } else if (bucket < limit4) {
             // 4. 기타 조기 은퇴 (50세 ~ 64세) -> 50세 ~ voluntaryAge - 1 사이 균등 배분
             const range = Math.max(1, voluntaryAge - 50);
             retireAge = 50 + (bucket % range);
@@ -907,6 +917,7 @@ export default function CommitteeDashboard() {
       9.0, // 기존 기여율 9%
       3.5, // 기존 할인율 3.5%
       0.0, // 기존 보조율 0%
+      20,  // 기존 자원은퇴자 비율 20% 기본값
       false
     );
   }, [members, interestRate, wageGrowth, maleLife, femaleLife, initialAsset]);
@@ -926,9 +937,10 @@ export default function CommitteeDashboard() {
       simContributionRate,
       simDiscountRate,
       simSubsidyRate,
+      voluntaryRatio,
       true
     );
-  }, [members, simVoluntaryAge, simMandatoryAge, interestRate, wageGrowth, maleLife, femaleLife, initialAsset, simNewSubscribers, simNewSubDeclineRate, lifeExpectancyTrend, nonSelfSufficientRatio, simCpiIndexing, simCpiRate, simLumpSumRatio, simContributionRate, simDiscountRate, simSubsidyRate]);
+  }, [members, simVoluntaryAge, simMandatoryAge, interestRate, wageGrowth, maleLife, femaleLife, initialAsset, simNewSubscribers, simNewSubDeclineRate, lifeExpectancyTrend, nonSelfSufficientRatio, simCpiIndexing, simCpiRate, simLumpSumRatio, simContributionRate, simDiscountRate, simSubsidyRate, voluntaryRatio]);
 
   // 제안 안 시뮬레이션 연산 (낙관 - 수익률 + 변동성)
   const proposedProjectionOpt = useMemo(() => {
@@ -945,9 +957,10 @@ export default function CommitteeDashboard() {
       simContributionRate,
       simDiscountRate,
       simSubsidyRate,
+      voluntaryRatio,
       true
     );
-  }, [members, simVoluntaryAge, simMandatoryAge, interestRate, interestVolatility, wageGrowth, maleLife, femaleLife, initialAsset, simNewSubscribers, simNewSubDeclineRate, lifeExpectancyTrend, nonSelfSufficientRatio, simCpiIndexing, simCpiRate, simLumpSumRatio, simContributionRate, simDiscountRate, simSubsidyRate]);
+  }, [members, simVoluntaryAge, simMandatoryAge, interestRate, interestVolatility, wageGrowth, maleLife, femaleLife, initialAsset, simNewSubscribers, simNewSubDeclineRate, lifeExpectancyTrend, nonSelfSufficientRatio, simCpiIndexing, simCpiRate, simLumpSumRatio, simContributionRate, simDiscountRate, simSubsidyRate, voluntaryRatio]);
 
   // 제안 안 시뮬레이션 연산 (비관 - 수익률 - 변동성)
   const proposedProjectionPess = useMemo(() => {
@@ -964,9 +977,10 @@ export default function CommitteeDashboard() {
       simContributionRate,
       simDiscountRate,
       simSubsidyRate,
+      voluntaryRatio,
       true
     );
-  }, [members, simVoluntaryAge, simMandatoryAge, interestRate, interestVolatility, wageGrowth, maleLife, femaleLife, initialAsset, simNewSubscribers, simNewSubDeclineRate, lifeExpectancyTrend, nonSelfSufficientRatio, simCpiIndexing, simCpiRate, simLumpSumRatio, simContributionRate, simDiscountRate, simSubsidyRate]);
+  }, [members, simVoluntaryAge, simMandatoryAge, interestRate, interestVolatility, wageGrowth, maleLife, femaleLife, initialAsset, simNewSubscribers, simNewSubDeclineRate, lifeExpectancyTrend, nonSelfSufficientRatio, simCpiIndexing, simCpiRate, simLumpSumRatio, simContributionRate, simDiscountRate, simSubsidyRate, voluntaryRatio]);
 
   // 기존 안 수지적자 전환 연도 찾기
   const baseDeficitYear = useMemo(() => {
