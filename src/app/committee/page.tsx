@@ -88,7 +88,8 @@ export default function CommitteeDashboard() {
   const [wageGrowth, setWageGrowth] = useState(1.5); // 연 평균 임금 상승률 %
   const [maleLife, setMaleLife] = useState(81); // 남성 평균 수명
   const [femaleLife, setFemaleLife] = useState(87); // 여성 평균 수명
-  const [initialAsset, setInitialAsset] = useState(49351779983); // 2023년말 엑셀 실제 연금자산 (약 494억)
+  const [initialAsset, setInitialAsset] = useState(52419386890); // 2025년말 실제 연금자산 (대차대조표 기준 52,419,386,890원)
+
 
   // 6대 심화 고급 리스크 변수
   const [simNewSubDeclineRate, setSimNewSubDeclineRate] = useState(1.5); // 신규 가입자 감소율 %
@@ -423,6 +424,32 @@ export default function CommitteeDashboard() {
     const projectionYears = 40; // 40년 예측 (2026 ~ 2065)
     const results: YearlyProjection[] = [];
     let currentAsset = startAsset;
+
+    // 2025년 실제 대차대조표 및 DB 캐시플로우 실적 주입
+    results.push({
+      year: 2025,
+      inflow: 6231441200,
+      inflowNormal: 6231441200,
+      inflowNew: 0,
+      inflowExtension: 0,
+      inflowInterest: 1449924820,
+      outflow: 6411500000,
+      endingAsset: 52419386890,
+      activeMembers: 2119,
+      payoutMembers: 701,
+      totalActiveMinisters: 3733,
+      totalRetiredMinisters: 701,
+      actuarialLiability: 0, // 루프가 끝난 뒤 보정
+      fundingRatio: 0,       // 루프가 끝난 뒤 보정
+      ageUnder40: 0,
+      age40s: 0,
+      age50s: 0,
+      age60s: 0,
+      age70plus: 0,
+      medianAge: 0,
+      averageAge: 0
+    });
+
 
     // 미자립 교회 비율 연동 완납율 계산 (제안안의 경우 보조율에 따라 미자립교회 완납율 선형 상승 보정)
     const selfSufficientCompliance = 0.90;
@@ -869,8 +896,8 @@ export default function CommitteeDashboard() {
         }
       });
 
-      // 연도말 자산 정산: (전년자산 * 이자율) + 수입 - 지출
-      const prevAsset = i === 0 ? startAsset : results[i - 1].endingAsset;
+      // 연도말 자산 정산: results[0] 에 2025년 실적이 있으므로, 2026년(i=0)일 때 prevAsset 은 2025년 말 자산(results[0].endingAsset)이 됨
+      const prevAsset = results[i].endingAsset;
       const yearlyInflowInterest = Math.max(0, Math.round(prevAsset * (rate / 100)));
       
       currentAsset = prevAsset + yearlyInflow + yearlyInflowInterest - yearlyOutflow;
@@ -911,7 +938,25 @@ export default function CommitteeDashboard() {
       });
     }
 
+    // 2025년(results[0])의 계리 부채 및 적립률을 2026년 결과를 기준으로 할인하여 보정
+    if (results.length > 1) {
+      const nextLiability = results[1].actuarialLiability;
+      const d = discountRate / 100;
+      results[0].actuarialLiability = Math.round(nextLiability / (1 + d));
+      results[0].fundingRatio = parseFloat((results[0].endingAsset / results[0].actuarialLiability * 100).toFixed(2));
+      
+      // 연령 분석 값도 2026년 기준 이월
+      results[0].ageUnder40 = results[1].ageUnder40;
+      results[0].age40s = results[1].age40s;
+      results[0].age50s = results[1].age50s;
+      results[0].age60s = results[1].age60s;
+      results[0].age70plus = results[1].age70plus;
+      results[0].medianAge = results[1].medianAge;
+      results[0].averageAge = results[1].averageAge;
+    }
+
     return results;
+
   };
 
   // 현직 목회자 연금 가입/미가입 및 수급 자격 현황 요약
