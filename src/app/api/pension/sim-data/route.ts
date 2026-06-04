@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
         TRIM(p.PenNo) AS PenNo,
         TRIM(p.EndDate) AS EndDate,
         TRIM(m.BirthDay) AS BirthDay,
-        ISNULL(s.Lev1_Cnt, 0) + ISNULL(s.Lev2_Cnt, 0) + ISNULL(s.Lev3_Cnt, 0) + ISNULL(s.Lev4_Cnt, 0) AS PastMonths,
+        ISNULL(paid_months.cnt, 0) AS PastMonths,
         ISNULL(paid.TotalPaid, 0) AS CurrentAmt,
         ISNULL(last_pay.inContribute, 0) AS LastContribute,
         ISNULL(last_pay.inShare, 0) AS LastShare,
@@ -25,7 +25,11 @@ export async function GET(request: NextRequest) {
       FROM TB_PEN360 r
       INNER JOIN TB_PEN100 p ON r.PenNo = p.PenNo
       INNER JOIN TB_Chr200 m ON p.MemberCode = m.MinisterCode
-      LEFT JOIN TB_PEN350 s ON p.PenNo = s.PenNo
+      LEFT JOIN (
+        SELECT PenNo, COUNT(DISTINCT YYMM) as cnt
+        FROM TB_PEN110
+        GROUP BY PenNo
+      ) paid_months ON p.PenNo = paid_months.PenNo
       LEFT JOIN (
         SELECT PenNo, SUM(inContribute + inShare + inArrear) AS TotalPaid
         FROM TB_PEN110
@@ -52,7 +56,7 @@ export async function GET(request: NextRequest) {
         TRIM(p.PenNo) AS PenNo,
         TRIM(p.EndDate) AS EndDate,
         TRIM(m.BirthDay) AS BirthDay,
-        ISNULL(s.Lev1_Cnt, 0) + ISNULL(s.Lev2_Cnt, 0) + ISNULL(s.Lev3_Cnt, 0) + ISNULL(s.Lev4_Cnt, 0) AS PastMonths,
+        ISNULL(paid_months.cnt, 0) AS PastMonths,
         ISNULL(paid.TotalPaid, 0) AS CurrentAmt,
         ISNULL(last_pay.inContribute, 0) AS LastContribute,
         ISNULL(last_pay.inShare, 0) AS LastShare,
@@ -67,7 +71,11 @@ export async function GET(request: NextRequest) {
         NULL AS LastPayAmt
       FROM TB_Chr200 m
       LEFT JOIN TB_PEN100 p ON m.MinisterCode = p.MemberCode
-      LEFT JOIN TB_PEN350 s ON p.PenNo = s.PenNo
+      LEFT JOIN (
+        SELECT PenNo, COUNT(DISTINCT YYMM) as cnt
+        FROM TB_PEN110
+        GROUP BY PenNo
+      ) paid_months ON p.PenNo = paid_months.PenNo
       LEFT JOIN (
         SELECT PenNo, SUM(inContribute + inShare + inArrear) AS TotalPaid
         FROM TB_PEN110
@@ -101,4 +109,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
 
