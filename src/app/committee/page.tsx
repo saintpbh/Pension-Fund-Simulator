@@ -41,7 +41,11 @@ interface SimMember {
   LastContribute: number;
   LastShare: number;
   RealRetireAge?: number | null;
+  IsRecipient?: number;
+  LastPayType?: number | null;
+  LastPayAmt?: number | null;
 }
+
 
 
 interface YearlyProjection {
@@ -59,6 +63,14 @@ interface YearlyProjection {
   totalRetiredMinisters: number;
   actuarialLiability: number;
   fundingRatio: number;
+  // 연령대별 활성 목회자 분포
+  ageUnder40: number;
+  age40s: number;
+  age50s: number;
+  age60s: number;
+  age70plus: number;
+  medianAge: number;
+  averageAge: number;
 }
 
 export default function CommitteeDashboard() {
@@ -93,7 +105,7 @@ export default function CommitteeDashboard() {
   const [simSubsidyRate, setSimSubsidyRate] = useState(0.0); // 미자립교회 재정보조율 %
 
   // 듀얼 스크린 동기화 모드 상태 ('normal': 기본, 'control': 제어창만, 'viewer': 차트 대시보드, 'chart-*': 개별 차트 단독)
-  const [mode, setMode] = useState<'normal' | 'control' | 'viewer' | 'chart-asset' | 'chart-ministers' | 'chart-population' | 'chart-shortterm'>('normal');
+  const [mode, setMode] = useState<'normal' | 'control' | 'viewer' | 'chart-asset' | 'chart-ministers' | 'chart-population' | 'chart-agepyramid' | 'chart-shortterm'>('normal');
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const bc = useRef<BroadcastChannel | null>(null);
 
@@ -102,6 +114,7 @@ export default function CommitteeDashboard() {
   const [highlightedMinistersIndices, setHighlightedMinistersIndices] = useState<number[]>([]);
   const [highlightedShortTermIndices, setHighlightedShortTermIndices] = useState<number[]>([]);
   const [highlightedTotalMinistersIndices, setHighlightedTotalMinistersIndices] = useState<number[]>([]);
+  const [highlightedAgePyramidIndices, setHighlightedAgePyramidIndices] = useState<number[]>([]);
 
   // 고정값 (기존 정책 비교용)
   const BASE_VOLUNTARY_AGE = 65;
@@ -111,6 +124,7 @@ export default function CommitteeDashboard() {
   const ministersChartRef = useRef<ChartJS<'line'>>(null);
   const shortTermChartRef = useRef<ChartJS<'bar' | 'line'>>(null);
   const totalMinistersChartRef = useRef<ChartJS<'line'>>(null);
+  const agePyramidChartRef = useRef<ChartJS<'line'>>(null);
 
   interface ZoomableChart {
     resetZoom: () => void;
@@ -144,6 +158,13 @@ export default function CommitteeDashboard() {
     }
   };
 
+  const handleResetAgePyramidZoom = () => {
+    if (agePyramidChartRef.current) {
+      const chart = agePyramidChartRef.current as unknown as ZoomableChart;
+      chart.resetZoom();
+    }
+  };
+
   useEffect(() => {
     // chartjs-plugin-zoom을 dynamic import하여 클라이언트 측에서만 등록
     Promise.all([
@@ -172,7 +193,7 @@ export default function CommitteeDashboard() {
 
     const params = new URLSearchParams(window.location.search);
     const m = params.get('mode');
-    const chartViewerModes = ['viewer', 'chart-asset', 'chart-ministers', 'chart-population', 'chart-shortterm'];
+    const chartViewerModes = ['viewer', 'chart-asset', 'chart-ministers', 'chart-population', 'chart-agepyramid', 'chart-shortterm'];
 
     if (m === 'control') {
       setMode('control');
@@ -294,7 +315,7 @@ export default function CommitteeDashboard() {
 
   // 설정 제어 모드일 때 매개변수 실시간 송출
   useEffect(() => {
-    if (!bc.current || ['viewer', 'chart-asset', 'chart-ministers', 'chart-population', 'chart-shortterm'].includes(mode)) return;
+    if (!bc.current || ['viewer', 'chart-asset', 'chart-ministers', 'chart-population', 'chart-agepyramid', 'chart-shortterm'].includes(mode)) return;
     bc.current.postMessage({
       type: 'sync-parameters',
       payload: {
@@ -349,7 +370,7 @@ export default function CommitteeDashboard() {
       'width=480,height=900,scrollbars=yes,resizable=yes'
     );
     if (controlWindow) {
-      const chartViewerModes = ['viewer', 'chart-asset', 'chart-ministers', 'chart-population', 'chart-shortterm'];
+      const chartViewerModes = ['viewer', 'chart-asset', 'chart-ministers', 'chart-population', 'chart-agepyramid', 'chart-shortterm'];
       if (!chartViewerModes.includes(mode)) {
         setMode('viewer');
         window.history.replaceState(null, '', '/committee?mode=viewer');
@@ -421,6 +442,9 @@ export default function CommitteeDashboard() {
       active: boolean; // 활성 가입 여부 (자연감소율 적용)
       isEnrolled: boolean;
       realRetireAge?: number | null;
+      isRecipient?: number;
+      lastPayType?: number | null;
+      lastPayAmt?: number | null;
     }
 
     let virtualMembers: VirtualMember[] = members.map((m, idx) => {
@@ -446,9 +470,12 @@ export default function CommitteeDashboard() {
         endDate: m.EndDate,
         joinYear: isEnrolled ? 2025 : 9999, // 미가입자는 일단 시뮬레이션 외각
         isNew: false,
-        active: isEnrolled, // 가입자만 최초 활성화
+        active: isEnrolled || m.IsRecipient === 1, // 가입자 또는 이미 수급 중인 사람 최초 활성화
         isEnrolled,
-        realRetireAge: m.RealRetireAge
+        realRetireAge: m.RealRetireAge,
+        isRecipient: m.IsRecipient,
+        lastPayType: m.LastPayType,
+        lastPayAmt: m.LastPayAmt
       };
     });
 
@@ -464,6 +491,7 @@ export default function CommitteeDashboard() {
       let payoutCount = 0;
       let activeMinistersCount = 0;
       let retiredMinistersCount = 0;
+      const activeAges: number[] = []; // 활성 목회자 나이 수집
 
       // 1. 가입자 자연감소율 (2.0%) 적용 (매년 기존 활성 가입자의 2%가 자연 퇴출/사망 가정)
       virtualMembers.forEach((m) => {
@@ -560,12 +588,37 @@ export default function CommitteeDashboard() {
 
         const retireYear = member.birthYear + retireAge;
         const additionalLife = (year - 2026) / 10 * lifeExpectancyTrend;
-        const maleDeathYear = member.birthYear + maleExp + additionalLife;
+        
+        let calculatedMaleDeathYear = member.birthYear + maleExp + additionalLife;
+        let calculatedFemaleDeathYear = member.birthYear + femaleExp + additionalLife;
+
+        // [보정] 기존 실제 수급자(IsRecipient === 1)의 경우, 이미 2026년에 생존해 있으므로 나이 대비 기대여명을 보장
+        if (member.isRecipient === 1) {
+          const currentAge = 2026 - member.birthYear;
+          if (currentAge >= maleExp) {
+            let remainingLife = 3;
+            if (currentAge < 85) remainingLife = 6;
+            else if (currentAge < 90) remainingLife = 4;
+            calculatedMaleDeathYear = 2026 + remainingLife;
+          }
+          if (currentAge >= femaleExp) {
+            let remainingLife = 3;
+            if (currentAge < 92) remainingLife = 5;
+            calculatedFemaleDeathYear = 2026 + remainingLife;
+          }
+          // 2026년 당해 연도에는 사망하여 탈락하지 않도록 보장
+          calculatedMaleDeathYear = Math.max(calculatedMaleDeathYear, 2026.5);
+          calculatedFemaleDeathYear = Math.max(calculatedFemaleDeathYear, 2026.5);
+        }
+
+        const maleDeathYear = calculatedMaleDeathYear;
+        const femaleDeathYear = calculatedFemaleDeathYear;
 
         // 연금 가입 여부와 관계없이 생사 및 은퇴 여부 판별하여 총원 집계
         if (year < maleDeathYear) {
           if (year < retireYear) {
             activeMinistersCount++;
+            activeAges.push(year - member.birthYear);
           } else {
             retiredMinistersCount++;
           }
@@ -575,38 +628,23 @@ export default function CommitteeDashboard() {
 
         const isVoluntary = retireAge < mandatoryAge;
         const baseRetireAge = isVoluntary ? BASE_VOLUNTARY_AGE : BASE_MANDATORY_AGE; // 기존 정책 정년 기준점
-        const femaleDeathYear = member.birthYear + femaleExp + additionalLife;
 
-        // 이미 은퇴한 가입자 판별 (2026년 이전 은퇴 또는 EndDate 존재)
-        const isAlreadyRetired = member.joinYear <= 2026 && (
-          (member.endDate && member.endDate.trim() !== '') || (retireYear <= 2026)
-        );
+        // 이미 은퇴하여 연금을 수급 중인 수급자 판별 (IsRecipient === 1)
+        const isAlreadyRetired = member.isRecipient === 1;
 
         if (isAlreadyRetired) {
           // 이미 은퇴 상태: 납입(Inflow)은 없고 지출만 발생
           if (year >= 2026 && year < femaleDeathYear) {
             payoutCount++;
-            const retireInflatedDefaultPay = 1450000;
-            const yearsSinceRetire = year - Math.min(2026, retireYear);
             
-            // 실제 은퇴 나이에 근거한 조기 은퇴 감액률 적용 (만 70세 정년 기준 연 3.0% 감액)
-            // 70세 이상이면 감액 없음 (100% 지급)
-            const basePenaltyRate = Math.max(0.1, 1.0 - Math.max(0, 70 - retireAge) * 0.03);
-
-            // 엑셀 장기수급 감액비율 적용
-            let finalPenaltyRate = basePenaltyRate;
-            if (yearsSinceRetire >= 15) {
-              finalPenaltyRate = Math.max(0, basePenaltyRate - 0.15); // 16년차 이상 (-15%p)
-            } else if (yearsSinceRetire >= 10) {
-              finalPenaltyRate = Math.max(0, basePenaltyRate - 0.10); // 11~15년차 (-10%p)
-            }
-
-            const payoutFactor = year >= maleDeathYear ? 0.5 : 1.0; // 유족 연금 50%
+            // 가상의 145만 원 대신 실제 최근 수령액 적용
+            const basePay = member.lastPayAmt || 0;
+            const payoutFactor = year >= maleDeathYear ? 0.5 : 1.0; // 사망 시 유족연금 50% 감액 전환
             
             // 물가 연동(CPI) 지급액 인상 적용
             const cpiFactor = simCpiIndexing ? Math.pow(1 + simCpiRate / 100, year - Math.min(2026, retireYear)) : 1.0;
 
-            const monthlyPayout = Math.floor((retireInflatedDefaultPay * finalPenaltyRate * payoutFactor * cpiFactor) / 1000) * 1000;
+            const monthlyPayout = Math.floor((basePay * payoutFactor * cpiFactor) / 1000) * 1000;
             yearlyOutflow += monthlyPayout * 12;
           }
         } else {
@@ -740,15 +778,38 @@ export default function CommitteeDashboard() {
 
         const retireYear = member.birthYear + retireAge;
         const additionalLife = (year - 2026) / 10 * lifeExpectancyTrend;
-        const maleDeathYear = member.birthYear + maleExp + additionalLife;
-        const femaleDeathYear = member.birthYear + femaleExp + additionalLife;
+        
+        let calculatedMaleDeathYear = member.birthYear + maleExp + additionalLife;
+        let calculatedFemaleDeathYear = member.birthYear + femaleExp + additionalLife;
 
+        // [보정] 기존 실제 수급자(IsRecipient === 1)의 경우 최소 기대여명을 보장
+        if (member.isRecipient === 1) {
+          const currentAge = 2026 - member.birthYear;
+          if (currentAge >= maleExp) {
+            let remainingLife = 3;
+            if (currentAge < 85) remainingLife = 6;
+            else if (currentAge < 90) remainingLife = 4;
+            calculatedMaleDeathYear = 2026 + remainingLife;
+          }
+          if (currentAge >= femaleExp) {
+            let remainingLife = 3;
+            if (currentAge < 92) remainingLife = 5;
+            calculatedFemaleDeathYear = 2026 + remainingLife;
+          }
+          calculatedMaleDeathYear = Math.max(calculatedMaleDeathYear, 2026.5);
+          calculatedFemaleDeathYear = Math.max(calculatedFemaleDeathYear, 2026.5);
+        }
+
+        const maleDeathYear = calculatedMaleDeathYear;
+        const femaleDeathYear = calculatedFemaleDeathYear;
+
+        const isAlreadyRetired = member.isRecipient === 1;
         const totalMonths = member.pastMonths + Math.max(0, (retireYear - member.joinYear) * 12);
-        if (totalMonths < 180) return; // 15년 미납자는 권리 없음
+        if (!isAlreadyRetired && totalMonths < 180) return; // 15년 미납자는 권리 없음 (기존 수급자는 예외)
 
         const isLumpSum = (memberIdx % 100) < simLumpSumRatio;
 
-        if (isLumpSum) {
+        if (isLumpSum && !isAlreadyRetired) {
           // 일시금 부채 평가
           if (retireYear >= year) {
             const t = retireYear - year;
@@ -761,36 +822,49 @@ export default function CommitteeDashboard() {
           const endPayYear = Math.ceil(femaleDeathYear);
           if (startPayYear >= endPayYear) return;
 
-          const retireInflatedDefaultPay = 1450000 * Math.pow(1 + growth / 100, Math.max(0, retireYear - 2026));
-          
-          let generalPayoutRate = 0;
-          if (member.isNew) {
-            generalPayoutRate = totalMonths * 0.0025;
-          } else {
-            const normalMonths = Math.min(240, totalMonths);
-            const excessMonths = Math.max(0, totalMonths - 240);
-            generalPayoutRate = (normalMonths * 0.0025) + (excessMonths * 0.001667);
-          }
-          const decisionRate = generalPayoutRate + 0.06;
-          const decisionAmount = retireInflatedDefaultPay * decisionRate;
-          const basePenaltyRate = Math.max(0.1, 1.0 - Math.max(0, mandatoryAge - retireAge) * 0.03);
-
-          for (let py = startPayYear; py < endPayYear; py++) {
-            const t = py - year;
-            const yearsSinceRetire = py - retireYear;
-            
-            let finalPenaltyRate = basePenaltyRate;
-            if (yearsSinceRetire >= 15) {
-              finalPenaltyRate = Math.max(0, basePenaltyRate - 0.15);
-            } else if (yearsSinceRetire >= 10) {
-              finalPenaltyRate = Math.max(0, basePenaltyRate - 0.10);
+          if (isAlreadyRetired) {
+            // 기존 수급자 부채 평가
+            const basePay = member.lastPayAmt || 0;
+            for (let py = startPayYear; py < endPayYear; py++) {
+              const t = py - year;
+              const payoutFactor = py >= maleDeathYear ? 0.5 : 1.0;
+              const cpiFactor = simCpiIndexing ? Math.pow(1 + simCpiRate / 100, py - Math.min(2026, retireYear)) : 1.0;
+              const yearlyPayout = basePay * payoutFactor * cpiFactor * 12;
+              actuarialLiability += yearlyPayout / Math.pow(1 + d, t);
             }
+          } else {
+            // 미래 수급자 부채 평가
+            const retireInflatedDefaultPay = 1450000 * Math.pow(1 + growth / 100, Math.max(0, retireYear - 2026));
+            
+            let generalPayoutRate = 0;
+            if (member.isNew) {
+              generalPayoutRate = totalMonths * 0.0025;
+            } else {
+              const normalMonths = Math.min(240, totalMonths);
+              const excessMonths = Math.max(0, totalMonths - 240);
+              generalPayoutRate = (normalMonths * 0.0025) + (excessMonths * 0.001667);
+            }
+            const decisionRate = generalPayoutRate + 0.06;
+            const decisionAmount = retireInflatedDefaultPay * decisionRate;
+            const basePenaltyRate = Math.max(0.1, 1.0 - Math.max(0, mandatoryAge - retireAge) * 0.03);
 
-            const payoutFactor = py >= maleDeathYear ? 0.5 : 1.0;
-            const cpiFactor = simCpiIndexing ? Math.pow(1 + simCpiRate / 100, py - retireYear) : 1.0;
-            const yearlyPayout = decisionAmount * finalPenaltyRate * payoutFactor * cpiFactor * 12;
+            for (let py = startPayYear; py < endPayYear; py++) {
+              const t = py - year;
+              const yearsSinceRetire = py - retireYear;
+              
+              let finalPenaltyRate = basePenaltyRate;
+              if (yearsSinceRetire >= 15) {
+                finalPenaltyRate = Math.max(0, basePenaltyRate - 0.15);
+              } else if (yearsSinceRetire >= 10) {
+                finalPenaltyRate = Math.max(0, basePenaltyRate - 0.10);
+              }
 
-            actuarialLiability += yearlyPayout / Math.pow(1 + d, t);
+              const payoutFactor = py >= maleDeathYear ? 0.5 : 1.0;
+              const cpiFactor = simCpiIndexing ? Math.pow(1 + simCpiRate / 100, py - retireYear) : 1.0;
+              const yearlyPayout = decisionAmount * finalPenaltyRate * payoutFactor * cpiFactor * 12;
+
+              actuarialLiability += yearlyPayout / Math.pow(1 + d, t);
+            }
           }
         }
       });
@@ -801,6 +875,16 @@ export default function CommitteeDashboard() {
       
       currentAsset = prevAsset + yearlyInflow + yearlyInflowInterest - yearlyOutflow;
       const fundingRatio = actuarialLiability > 0 ? (currentAsset / actuarialLiability) * 100 : 100;
+
+      // 연령대별 분류
+      const ageUnder40 = activeAges.filter(a => a < 40).length;
+      const age40s = activeAges.filter(a => a >= 40 && a < 50).length;
+      const age50s = activeAges.filter(a => a >= 50 && a < 60).length;
+      const age60s = activeAges.filter(a => a >= 60 && a < 70).length;
+      const age70plus = activeAges.filter(a => a >= 70).length;
+      const sortedAges = [...activeAges].sort((a, b) => a - b);
+      const medianAge = sortedAges.length > 0 ? sortedAges[Math.floor(sortedAges.length / 2)] : 0;
+      const averageAge = sortedAges.length > 0 ? Math.round(sortedAges.reduce((s, a) => s + a, 0) / sortedAges.length * 10) / 10 : 0;
 
       results.push({
         year,
@@ -816,7 +900,14 @@ export default function CommitteeDashboard() {
         totalActiveMinisters: activeMinistersCount,
         totalRetiredMinisters: retiredMinistersCount,
         actuarialLiability: Math.round(actuarialLiability),
-        fundingRatio: parseFloat(fundingRatio.toFixed(2))
+        fundingRatio: parseFloat(fundingRatio.toFixed(2)),
+        ageUnder40,
+        age40s,
+        age50s,
+        age60s,
+        age70plus,
+        medianAge,
+        averageAge
       });
     }
 
@@ -992,17 +1083,46 @@ export default function CommitteeDashboard() {
     );
   }, [members, simVoluntaryAge, simMandatoryAge, interestRate, interestVolatility, wageGrowth, maleLife, femaleLife, initialAsset, simNewSubscribers, simNewSubDeclineRate, lifeExpectancyTrend, nonSelfSufficientRatio, simCpiIndexing, simCpiRate, simLumpSumRatio, simContributionRate, simDiscountRate, simSubsidyRate, voluntaryRatio]);
 
-  // 기존 안 수지적자 전환 연도 찾기
-  const baseDeficitYear = useMemo(() => {
+  // 수지적자 전환 연도 찾기 (흑자 → 적자 전환 시점 또는 처음부터 적자인 경우 구분)
+  const baseDeficitInfo = useMemo(() => {
+    if (baseProjection.length === 0) return { type: 'no-data' as const, year: null };
+    // 첫 해부터 적자인지 확인
+    const firstYear = baseProjection[0];
+    if (firstYear.inflow < firstYear.outflow) {
+      // 혹시 중간에 흑자 전환하는 해가 있는지 확인
+      const surplusYear = baseProjection.find((p) => p.inflow >= p.outflow);
+      if (surplusYear) {
+        // 흑자 전환 후 다시 적자로 전환하는 해 찾기
+        const afterSurplusIdx = baseProjection.indexOf(surplusYear);
+        const deficitAfterSurplus = baseProjection.slice(afterSurplusIdx).find((p) => p.inflow < p.outflow);
+        return { type: 'recovers-then-deficit' as const, year: deficitAfterSurplus ? deficitAfterSurplus.year : null, surplusYear: surplusYear.year };
+      }
+      return { type: 'always-deficit' as const, year: firstYear.year };
+    }
+    // 처음에는 흑자, 적자 전환 시점 찾기
     const deficit = baseProjection.find((p) => p.inflow < p.outflow);
-    return deficit ? deficit.year : null;
+    return { type: 'transition' as const, year: deficit ? deficit.year : null };
   }, [baseProjection]);
 
-  // 제안 안 수지적자 전환 연도 찾기
-  const proposedDeficitYear = useMemo(() => {
+  const proposedDeficitInfo = useMemo(() => {
+    if (proposedProjection.length === 0) return { type: 'no-data' as const, year: null };
+    const firstYear = proposedProjection[0];
+    if (firstYear.inflow < firstYear.outflow) {
+      const surplusYear = proposedProjection.find((p) => p.inflow >= p.outflow);
+      if (surplusYear) {
+        const afterSurplusIdx = proposedProjection.indexOf(surplusYear);
+        const deficitAfterSurplus = proposedProjection.slice(afterSurplusIdx).find((p) => p.inflow < p.outflow);
+        return { type: 'recovers-then-deficit' as const, year: deficitAfterSurplus ? deficitAfterSurplus.year : null, surplusYear: surplusYear.year };
+      }
+      return { type: 'always-deficit' as const, year: firstYear.year };
+    }
     const deficit = proposedProjection.find((p) => p.inflow < p.outflow);
-    return deficit ? deficit.year : null;
+    return { type: 'transition' as const, year: deficit ? deficit.year : null };
   }, [proposedProjection]);
+
+  // 하위 호환성을 위한 alias
+  const baseDeficitYear = baseDeficitInfo.type === 'transition' ? baseDeficitInfo.year : (baseDeficitInfo.type === 'always-deficit' ? baseDeficitInfo.year : null);
+  const proposedDeficitYear = proposedDeficitInfo.type === 'transition' ? proposedDeficitInfo.year : (proposedDeficitInfo.type === 'always-deficit' ? proposedDeficitInfo.year : null);
 
   // 기존 안 고갈 연도 찾기
   const baseDepletionYear = useMemo(() => {
@@ -2630,10 +2750,10 @@ export default function CommitteeDashboard() {
             <div style={{ padding: '0.5rem 1rem', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', textAlign: 'center' }}>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>수지적자 전환시점 (이자제외)</div>
               <div style={{ fontSize: '0.9rem', fontWeight: '800', color: 'var(--warning)', marginTop: '0.15rem' }}>
-                기존: {baseDeficitYear ? `${baseDeficitYear}년` : '적자없음'}
+                기존: {baseDeficitInfo.type === 'always-deficit' ? '시작부터 적자' : baseDeficitInfo.type === 'recovers-then-deficit' ? `${(baseDeficitInfo as { surplusYear: number }).surplusYear}년 흑자→${baseDeficitInfo.year ? `${baseDeficitInfo.year}년` : '적자없음'}` : baseDeficitYear ? `${baseDeficitYear}년` : '적자없음'}
               </div>
               <div style={{ fontSize: '0.9rem', fontWeight: '800', color: 'var(--primary)', marginTop: '0.15rem' }}>
-                제안: {proposedDeficitYear ? `${proposedDeficitYear}년` : '적자없음'}
+                제안: {proposedDeficitInfo.type === 'always-deficit' ? '시작부터 적자' : proposedDeficitInfo.type === 'recovers-then-deficit' ? `${(proposedDeficitInfo as { surplusYear: number }).surplusYear}년 흑자전환→${proposedDeficitInfo.year ? `${proposedDeficitInfo.year}년 재적자` : '유지'}` : proposedDeficitYear ? `${proposedDeficitYear}년` : '적자없음'}
               </div>
             </div>
             <div style={{ padding: '0.5rem 1rem', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', textAlign: 'center' }}>
@@ -2822,6 +2942,309 @@ export default function CommitteeDashboard() {
           {mounted ? (
             <Line ref={totalMinistersChartRef} data={totalMinistersChartData} options={totalMinistersChartOptions} />
           ) : (
+            <div style={{ textAlign: 'center', paddingTop: '5rem', color: 'var(--text-tertiary)' }}>차트 로딩 중...</div>
+          )}
+        </div>
+      </section>
+
+      {/* 1.7 AGE DEMOGRAPHICS CHART - 연령대 분포 추이 */}
+      <section className="glass-panel animate-fade-in" style={{ width: '100%', minHeight: mode === 'chart-agepyramid' ? '80vh' : '450px', display: (mode === 'control' || (mode.startsWith('chart-') && mode !== 'chart-agepyramid')) ? 'none' : 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <h2 style={{ fontSize: '1.25rem', color: 'var(--text-primary)' }}>📊 현직 목회자 연령대 분포 추이 (제안 vs 기존)</h2>
+            <p className="sub-title" style={{ fontSize: '0.85rem' }}>은퇴 연령 연장 및 자원은퇴 비율에 따른 현직 목회자 연령대 구성과 중위 연령의 변화를 시각화합니다.</p>
+          </div>
+
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            {!mode.startsWith('chart-') && (
+              <button
+                onClick={() => window.open('/committee?mode=chart-agepyramid', 'ChartAgePyramid', 'width=1000,height=650,scrollbars=yes,resizable=yes')}
+                style={{
+                  padding: '0.4rem 0.8rem',
+                  fontSize: '0.8rem',
+                  fontWeight: '600',
+                  background: 'var(--primary-glow)',
+                  border: '1px solid var(--primary)',
+                  borderRadius: '6px',
+                  color: 'var(--primary)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'var(--primary)';
+                  e.currentTarget.style.color = '#fff';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'var(--primary-glow)';
+                  e.currentTarget.style.color = 'var(--primary)';
+                }}
+              >
+                🖥️ 차트 창 분리
+              </button>
+            )}
+            <button
+              onClick={handleResetAgePyramidZoom}
+              style={{
+                padding: '0.4rem 0.8rem',
+                fontSize: '0.8rem',
+                fontWeight: '600',
+                background: 'rgba(255, 255, 255, 0.08)',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                borderRadius: '6px',
+                color: '#cbd5e1',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)';
+                e.currentTarget.style.color = '#fff';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+                e.currentTarget.style.color = '#cbd5e1';
+              }}
+            >
+              🔍 배율 초기화
+            </button>
+          </div>
+        </div>
+
+        {/* Summary Stats */}
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          {proposedProjection.length > 0 && (() => {
+            const first = proposedProjection[0];
+            const last = proposedProjection[proposedProjection.length - 1];
+            const baseFirst = baseProjection[0];
+            const baseLast = baseProjection[baseProjection.length - 1];
+            return (
+              <>
+                <div style={{ padding: '0.4rem 0.8rem', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', textAlign: 'center', flex: '1 1 120px' }}>
+                  <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>2026 중위연령</div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: '800', color: 'var(--warning)' }}>기존 {baseFirst?.medianAge || '-'}세</div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: '800', color: 'var(--primary)' }}>제안 {first.medianAge}세</div>
+                </div>
+                <div style={{ padding: '0.4rem 0.8rem', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', textAlign: 'center', flex: '1 1 120px' }}>
+                  <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>2065 중위연령</div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: '800', color: 'var(--warning)' }}>기존 {baseLast?.medianAge || '-'}세</div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: '800', color: 'var(--primary)' }}>제안 {last.medianAge}세</div>
+                </div>
+                <div style={{ padding: '0.4rem 0.8rem', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', textAlign: 'center', flex: '1 1 120px' }}>
+                  <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>2026 60세 이상 비율</div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: '800', color: 'var(--danger)' }}>
+                    {baseFirst ? ((baseFirst.age60s + baseFirst.age70plus) / Math.max(1, baseFirst.ageUnder40 + baseFirst.age40s + baseFirst.age50s + baseFirst.age60s + baseFirst.age70plus) * 100).toFixed(1) : '-'}%
+                  </div>
+                </div>
+                <div style={{ padding: '0.4rem 0.8rem', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', textAlign: 'center', flex: '1 1 120px' }}>
+                  <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>2065 60세 이상 비율 (제안)</div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: '800', color: 'var(--danger)' }}>
+                    {((last.age60s + last.age70plus) / Math.max(1, last.ageUnder40 + last.age40s + last.age50s + last.age60s + last.age70plus) * 100).toFixed(1)}%
+                  </div>
+                </div>
+                <div style={{ padding: '0.4rem 0.8rem', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', textAlign: 'center', flex: '1 1 120px' }}>
+                  <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>중위연령 변화</div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: '800', color: last.medianAge > first.medianAge ? 'var(--danger)' : 'var(--success)' }}>
+                    {last.medianAge > first.medianAge ? '+' : ''}{last.medianAge - first.medianAge}세
+                  </div>
+                </div>
+              </>
+            );
+          })()}
+        </div>
+
+        {/* Chart Canvas */}
+        <div style={{ flex: 1, position: 'relative', minHeight: '350px' }}>
+          {mounted && proposedProjection.length > 0 ? (() => {
+            const labels = proposedProjection.map((p) => `${p.year}년`);
+
+            const getAgePyramidColor = (idx: number, opacityType: 'border' | 'background') => {
+              const baseColors = [
+                '34, 197, 94',     // under 40 - green
+                '59, 130, 246',    // 40s - blue
+                '245, 158, 11',    // 50s - amber
+                '239, 68, 68',     // 60s - red
+                '168, 85, 247',    // 70+ - purple
+                '255, 255, 255',   // median proposed - white
+                '148, 163, 184',   // median base - gray
+              ];
+              const defaultBgOpacities = [0.5, 0.5, 0.5, 0.5, 0.5, 0, 0];
+              const defaultBorderOpacities = [0.8, 0.8, 0.8, 0.8, 0.8, 1.0, 0.7];
+
+              const baseColor = baseColors[idx];
+              if (highlightedAgePyramidIndices.length === 0) {
+                return opacityType === 'background'
+                  ? `rgba(${baseColor}, ${defaultBgOpacities[idx]})`
+                  : `rgba(${baseColor}, ${defaultBorderOpacities[idx]})`;
+              }
+              if (highlightedAgePyramidIndices.includes(idx)) {
+                return opacityType === 'background'
+                  ? `rgba(${baseColor}, ${idx >= 5 ? 0 : 0.65})`
+                  : `rgba(${baseColor}, 1)`;
+              } else {
+                return opacityType === 'background'
+                  ? 'transparent'
+                  : `rgba(${baseColor}, 0.1)`;
+              }
+            };
+
+            const agePyramidData = {
+              labels,
+              datasets: [
+                {
+                  label: '40세 미만',
+                  data: proposedProjection.map((p) => p.ageUnder40),
+                  backgroundColor: getAgePyramidColor(0, 'background'),
+                  borderColor: getAgePyramidColor(0, 'border'),
+                  borderWidth: 1,
+                  fill: true,
+                  stack: 'proposed',
+                  yAxisID: 'yCount',
+                  order: 3,
+                },
+                {
+                  label: '40대',
+                  data: proposedProjection.map((p) => p.age40s),
+                  backgroundColor: getAgePyramidColor(1, 'background'),
+                  borderColor: getAgePyramidColor(1, 'border'),
+                  borderWidth: 1,
+                  fill: true,
+                  stack: 'proposed',
+                  yAxisID: 'yCount',
+                  order: 3,
+                },
+                {
+                  label: '50대',
+                  data: proposedProjection.map((p) => p.age50s),
+                  backgroundColor: getAgePyramidColor(2, 'background'),
+                  borderColor: getAgePyramidColor(2, 'border'),
+                  borderWidth: 1,
+                  fill: true,
+                  stack: 'proposed',
+                  yAxisID: 'yCount',
+                  order: 3,
+                },
+                {
+                  label: '60대',
+                  data: proposedProjection.map((p) => p.age60s),
+                  backgroundColor: getAgePyramidColor(3, 'background'),
+                  borderColor: getAgePyramidColor(3, 'border'),
+                  borderWidth: 1,
+                  fill: true,
+                  stack: 'proposed',
+                  yAxisID: 'yCount',
+                  order: 3,
+                },
+                {
+                  label: '70세 이상',
+                  data: proposedProjection.map((p) => p.age70plus),
+                  backgroundColor: getAgePyramidColor(4, 'background'),
+                  borderColor: getAgePyramidColor(4, 'border'),
+                  borderWidth: 1,
+                  fill: true,
+                  stack: 'proposed',
+                  yAxisID: 'yCount',
+                  order: 3,
+                },
+                {
+                  label: '제안안 중위연령 (우축)',
+                  data: proposedProjection.map((p) => p.medianAge),
+                  borderColor: getAgePyramidColor(5, 'border'),
+                  backgroundColor: 'transparent',
+                  borderWidth: highlightedAgePyramidIndices.length === 0 ? 3 : (highlightedAgePyramidIndices.includes(5) ? 4 : 1),
+                  borderDash: [],
+                  pointRadius: 2,
+                  pointHoverRadius: 5,
+                  fill: false,
+                  yAxisID: 'yAge',
+                  order: 1,
+                  tension: 0.2,
+                },
+                {
+                  label: '기존안 중위연령 (우축)',
+                  data: baseProjection.map((p) => p.medianAge),
+                  borderColor: getAgePyramidColor(6, 'border'),
+                  backgroundColor: 'transparent',
+                  borderWidth: highlightedAgePyramidIndices.length === 0 ? 2 : (highlightedAgePyramidIndices.includes(6) ? 3 : 0.5),
+                  borderDash: [8, 4],
+                  pointRadius: 0,
+                  fill: false,
+                  yAxisID: 'yAge',
+                  order: 1,
+                  tension: 0.2,
+                },
+              ],
+            };
+
+            const agePyramidOptions = {
+              responsive: true,
+              maintainAspectRatio: false,
+              interaction: { mode: 'index' as const, intersect: false },
+              plugins: {
+                legend: {
+                  position: 'top' as const,
+                  labels: { color: '#94a3b8', font: { size: 11 }, usePointStyle: true },
+                  onClick: (_e: unknown, legendItem: { datasetIndex?: number }) => {
+                    const idx = legendItem.datasetIndex;
+                    if (idx === undefined) return;
+                    setHighlightedAgePyramidIndices((prev) =>
+                      prev.includes(idx) ? prev.filter((i) => i !== idx) : [...prev, idx]
+                    );
+                  },
+                },
+                tooltip: {
+                  backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                  titleColor: '#e2e8f0',
+                  bodyColor: '#cbd5e1',
+                  borderColor: 'var(--border-color)',
+                  borderWidth: 1,
+                  callbacks: {
+                    label: (ctx: { dataset: { label?: string }; parsed: { y: number | null } }) => {
+                      const val = ctx.parsed.y;
+                      if (val === null || val === undefined) return '';
+                      const label = ctx.dataset.label || '';
+                      if (label.includes('중위연령')) return `${label}: ${val}세`;
+                      return `${label}: ${val.toLocaleString()}명`;
+                    },
+                  },
+                },
+                zoom: {
+                  pan: { enabled: true, mode: 'x' as const },
+                  zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' as const },
+                },
+              },
+              scales: {
+                x: {
+                  ticks: { color: '#64748b', font: { size: 10 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 20 },
+                  grid: { color: 'rgba(148, 163, 184, 0.06)' },
+                },
+                yCount: {
+                  type: 'linear' as const,
+                  position: 'left' as const,
+                  stacked: true,
+                  title: { display: true, text: '인원 (명)', color: '#94a3b8', font: { size: 11 } },
+                  ticks: { color: '#64748b', font: { size: 10 }, callback: (value: string | number) => `${Number(value).toLocaleString()}명` },
+                  grid: { color: 'rgba(148, 163, 184, 0.08)' },
+                  min: 0,
+                },
+                yAge: {
+                  type: 'linear' as const,
+                  position: 'right' as const,
+                  title: { display: true, text: '중위 연령 (세)', color: '#94a3b8', font: { size: 11 } },
+                  ticks: { color: '#64748b', font: { size: 10 }, callback: (value: string | number) => `${value}세` },
+                  grid: { drawOnChartArea: false },
+                  min: 30,
+                  max: 80,
+                },
+              },
+            };
+
+            return <Line ref={agePyramidChartRef} data={agePyramidData as Parameters<typeof Line>[0]['data']} options={agePyramidOptions as Parameters<typeof Line>[0]['options']} />;
+          })() : (
             <div style={{ textAlign: 'center', paddingTop: '5rem', color: 'var(--text-tertiary)' }}>차트 로딩 중...</div>
           )}
         </div>
